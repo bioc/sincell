@@ -9,7 +9,7 @@ Function to perform a dimensionality reduction upon the original gene expression
 }
 \usage{
 sc_DimensionalityReductionObj(SincellObject, method="PCA", dim=2, 
-MDS.distance="spearman", bins=c(-Inf,0,1,2,Inf),tsne.perplexity=1)
+MDS.distance="spearman", bins=c(-Inf,0,1,2,Inf),tsne.perplexity=1,tsne.theta=0.25)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -18,6 +18,9 @@ A SincellObject named list as created by function sc_InitializingSincellObject w
 }
   \item{method}{
 Dimensionality reduction algorithm to be used.  Options are: Principal Component Analysis (method="PCA"), Independent Component Analysis (method="ICA"; using fastICA() function in fastICA package), t-Distributed Stochastic Neighbor Embedding (method="tSNE"; using Rtsne() function in Rtsne package with parameters tsne.perplexity=1 and tsne.theta=0.25), classical Multidimensional Scaling (method="classical-MDS"; using the cmdscale() function) and  non-metric Multidimensional Scaling (method="nonmetric-MDS";using the isoMDS() function in MASS package). if method="PCA" is chosen, the proportion of variance explained by each of the principal axes is plotted.
+
+We note that Sincell makes use of the Rtsne implementation of the Barnes-Hut algorithm, which approximates the likelihood. The user should be aware that this is a less accurate version of t-SNE than e.g. the one used as basis of viSNE (Amir,E.D. et al. 2013, Nat Biotechnol 31, 545–552).
+
 }
   \item{dim}{
 Number of dimensions in low-dimensional space to be retained. Default is dim=2.
@@ -31,6 +34,10 @@ Intervals used to discretize the data in the case that Mutual Information distan
   \item{tsne.perplexity}{
 perplexity parameter for tSNE algorithm. We refer the reader to the Frequently Asked Questions in http://homepage.tudelft.nl/19j49/t-SNE.html
 }
+  \item{tsne.theta}{
+tradeoff between speed and accuracy. We refer the reader to the Frequently Asked Questions in http://homepage.tudelft.nl/19j49/t-SNE.html
+}
+
 }
 %\details{
 %%  ~~ If necessary, more details than the description above ~~

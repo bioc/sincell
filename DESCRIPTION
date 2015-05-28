@@ -2,34 +2,18 @@ Package: sincell
 Type: Package
 Title: R package for the statistical assessment of cell state
         hierarchies from single-cell RNA-seq data
-Version: 1.1.0
+Version: 1.1.01
 Date: 2014-12-04
-Author: Miguel Juliá <migueljuliamolina@gmail.com>, Amalio Telenti
-        <atelenti@jcvi.org>, Antonio
-        Rausell<antonio.rausell@isb-sib.ch>
-Maintainer: Miguel Juliá <migueljuliamolina@gmail.com>, Antonio
-        Rausell<antonio.rausell@isb-sib.ch>
+Author: Miguel Julia <migueljuliamolina@gmail.com>, Amalio Telenti <atelenti@jcvi.org>, Antonio Rausell <antonio.rausell@isb-sib.ch>
+Maintainer: Miguel Julia <migueljuliamolina@gmail.com>, Antonio Rausell<antonio.rausell@isb-sib.ch>
 Depends: R (>= 3.0.2), igraph
-Description: Cell differentiation processes are achieved through a
-        continuum of hierarchical intermediate cell-states that might
-        be captured by single-cell RNA seq. Existing computational
-        approaches for the assessment of cell-state hierarchies from
-        single-cell data might be formalized under a general workflow
-        composed of i) a metric to assess cell-to-cell similarities
-        (combined or not with a dimensionality reduction step), and ii)
-        a graph-building algorithm (optionally making use of a
-        cells-clustering step). Sincell R package implements a
-        methodological toolbox allowing flexible workflows under such
-        framework. Furthermore, Sincell contributes new algorithms to
-        provide cell-state hierarchies with statistical support while
-        accounting for stochastic factors in single-cell RNA seq.
-        Graphical representations and functional association tests are
-        provided to interpret hierarchies.
+Description: Cell differentiation processes are achieved through a continuum of hierarchical intermediate cell-states that might be captured by single-cell RNA seq. Existing computational approaches for the assessment of cell-state hierarchies from single-cell data might be formalized under a general workflow composed of i) a metric to assess cell-to-cell similarities (combined or not with a dimensionality reduction step), and ii) a graph-building algorithm (optionally making use of a cells-clustering step). Sincell R package implements a methodological toolbox allowing flexible workflows under such framework. Furthermore, Sincell contributes new algorithms to provide cell-state hierarchies with statistical support while accounting for stochastic factors in single-cell RNA seq. Graphical representations and functional association tests are provided to interpret hierarchies. 
 License: GPL (>= 2)
 Encoding: UTF-8
 URL: http://bioconductor.org/
 Imports: Rcpp (>= 0.11.2), entropy, scatterplot3d, MASS, TSP, ggplot2,
-        reshape2, fields, proxy, parallel, Rtsne, fastICA, cluster
+        reshape2, fields, proxy, parallel, Rtsne, fastICA, cluster,
+        statmod
 LinkingTo: Rcpp
 VignetteBuilder: knitr
 Suggests: BiocStyle, knitr, biomaRt, stringr, monocle
@@ -37,3 +21,4 @@ biocViews: Sequencing, RNASeq, Clustering, GraphAndNetwork,
         Visualization, GeneExpression, GeneSetEnrichment,
         BiomedicalInformatics, CellBiology, FunctionalGenomics,
         SystemsBiology
+Packaged: 2015-05-28 12:44:28 UTC; arausell

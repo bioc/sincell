@@ -78,7 +78,8 @@ First, packages missing your current installation together with their dependenci
 
 <<install_missing_packages, eval=FALSE>>=
 packages<-c("entropy", "fastICA", "fields", "ggplot2", "igraph", "MASS", "proxy", 
-                   "reshape2", "Rtsne", "scatterplot3d", "TSP", "abc", "abctools")
+                   "reshape2", "Rtsne", "scatterplot3d", "TSP", "abc", "abctools",
+                   "statmod")
 
 packages2install <- packages [!(packages %in% installed.packages()[, "Package"])]
 if(length(packages2install)>0){
@@ -292,6 +293,8 @@ cellsLowDimensionalSpace_tSNE<-SO[["cellsLowDimensionalSpace"]]
 @ %def
 
 The reader should be aware that ICA and tSNE are optimization algorithms, therefore different runs can lead to different solutions on the same input. Those stochastic differences are expected to be small though in certain cases two runs could lead to very different results.
+
+We note also that \Sincell{} makes use of the Rtsne implementation of the Barnes-Hut algorithm, which approximates the likelihood. The user should be aware that this is a less accurate version of t-SNE than e.g. the one used as basis of viSNE (Amir,E.D. et al. 2013, Nat Biotechnol 31, 545?552).
 
 To run Multidimensional Scaling:
 
@@ -554,7 +557,7 @@ cellstateHierarchy_SST<-SO[["cellstateHierarchy"]]
 
 <<graph_assessment2, eval=TRUE>>=
 # Iterative Mutual Clustering Graph (IMC)
-SO<- sc_GraphBuilderObj(SO, graph.algorithm="IMC")
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="IMC") 
 cellstateHierarchy_IMC<-SO[["cellstateHierarchy"]]
 @ %def
 
@@ -886,6 +889,8 @@ The cell replicates are concatenated by columns to the original gene expression 
 
 Stochasticity in gene expression at the single-cell level has also been described as following a lognormal distribution log(x) \textasciitilde N(m,v) (Bengtsson et al 2005; Raj et al. 2006). More recently, Shalek et al 2014 described gene expression variability in single-cell RNA-seq through a log normal distribution with a third parameter alpha describing the proportion of cells where transcript expression was detected above a given threshold level. Authors found that the majority of genes in their study (91\%) showed distributions well described by the three-parameter model (p \textless 0.01, goodness of fit test; Shalek et al 2014). By setting parameter method="lognormal-3parameters" within \Sincell{}'s function \textit{sc\_InSilicoCellsReplicatesObj()}, the function uses this "three parameter" model estimation to generate random perturbations of gene expression levels and produce in silico cell replicates.
 
+Other works have found that, for most of the genes, the variability observed among their expression levels across individual cells was better described by a negative binomial (NB) distribution rather than a lognormal distribution (Grün et al., 2014). These authors used NB distribution to model not only technical noise but also true biological gene expression noise. Their assumption is that endogenous mRNA abundance follows a NB as supported by a physical model of bursting expression (Raj et al., 2006). A negative binomial noise model was also adopted in (Zeisel et al., 2015). As pointed out in these works, NB is frequently used to model overdispersed count data and has been previously used for bulk RNA-seq data (Anders and Huber, 2010; Robinson et al., 2010). We recommend this approach only if normalized count data is used (i.e. not length-normalized RPKM/FPKM). By setting parameter method="negative.binomial" within \Sincell{}'s function \textit{sc\_InSilicoCellsReplicatesObj()}, \Sincell{} can follow an NB distribution parameterized on the observed gene expression levels to generate random perturbations and produce in silico cell replicates accordingly.
+
 %<<insilico_replicates2, eval=TRUE>>=
 %# For the sake of time we set here multiplier=100. 
 %# For a higher significance, we recommend setting multiplier=1000
@@ -963,6 +968,12 @@ var(SO_t72[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
 
 Consistent with results from the gene resampling procedure, time point 72 lead to the hierarchy with the highest median while time point 0 had the lowest median and the highest variance. Results again suggest that at 0 hours, homogeneity of cell states is high while at time point 72 hours, a higher degree of heterogeneity is present. Actually, a gradient along time can be observed (from 0 to 24, 48 and 72h) suggesting that heterogeneity in cell-states increased as a function of time.
 
+\subsection{Note on the spike-in molecules to deconvolute technical and biological noise.}
+The use of spike-in molecules is recommended in single-cell RNA-seq to infer the amount of variability in the ex-pression levels of one gene that is expected to arise from technical factors (Brennecke et al., 2013; Gr{\"u}n et al., 2014; Islam et al., 2014). More recently, Ding et al. went a step further by using spike-ins to explicitly remove technical noise and compute de-noised gene expression levels (R software GRM, \url{http://wanglab.ucsd.edu/star/GRM/} , Ding et al., 2015). When spike-ins are available, we recommend performing first technical denoise of the expression matrix before using \Sincell{}. In such a way, \Sincell{}'s computations of cell-state hierarchies would mainly rely on biological variation. Notwithstanding, biological variation will contain two main components. First, the heterogeneity explained by truly different cell-states in a differentiation/activation process, which is the component we aim to capture in a hierarchy. And second, the intrinsic biological noise that is expected to arise even among cells in the same differentiation/activation state. Intrinsic biological noise originates from the characteristics of gene expression mechanisms such as bursts of transcription (Raj et al., 2006), the stochasticity of signal transmission (Rand et al., 2012), bimodality (Shalek et al., 2013), cell cycle effects (McDavid et al., 2014; Buettner et al., 2015) and random monoallelic expression (Deng et al., 2014).Therefore, even if technical noise has been removed, it is important to test whether the hierarchy is mainly determined by real cell-state heterogeneity or, on the contrary, it is an artifact of the intrinsic biological noise. To this end, the reproducibility of the cell-state hierarchy can be evaluated upon random perturbations of the de-noised expression levels. \Sincell{}'s strategies described above based on either i) random gene subsampling or ii) random cell substitution with in silico-generated cell replicates, would in that case test whether the hierarchy is robust to stochastic perturbations of the data mimicking the effect of intrinsic biological noise. Additionally, the user could eventually wish to test the reproducibility of the hierarchy assessed on the original expression data (i.e. not performing first a technical de-noising step) upon random perturbations exclusively based on technical noise. Estimates of technical noise for each gene can be obtained by modeling the dependence of the coefficient of variation (cv2) of spike-in molecules as a function of their average expression. For instance, in Brennecke et al. 2013, for each technical gene i (e.g. the spike-ins), the sample mean (m) and sample variance of its normalized counts are estimated. Then, the observed squared coefficients of variation (cv2) are fitted against the sample mean (m) with a generalized linear model of the gamma family with identity link and parameterization cv2=a1/m+ alpha0. Applying the fitted formula to the sample mean expression levels of a gene provides an estimate of cv2 arising from technical noise, leading to a vector so-called here cv2.estimated. 
+%
+By setting parameter method="negative.binomial", and dispersion.statistic=cv2.estimated within \Sincell{}'s function \textit{sc\_InSilicoCellsReplicatesObj()}, \Sincell{} permits to incorporate a technical cv2 estimate per gene in the assessment of in silico cell replicates based on normalized counts (i.e. following the previously described negative binomial distribution whose dispersion is parameterized using the estimated technical cv2). 
+
+Alternatively, in the absence of spike-in molecules, by setting parameter method="negative.binomial", and dispersion.statistic="cv2.fitted.to.data" within \Sincell{}'s function \textit{sc\_InSilicoCellsReplicatesObj()} \Sincell{} implements the fit described in Brennecke et al. 2013 using the cv2 and m values of all genes in the input expression matrix to provide a surrogate of technical noise estimates. However, this alternative should not be used if the user has previously followed our recommendation in Section 1 of using such an approach to identify highly variable genes in order to decrease the size of the input matrix (\url{http://pklab.med.harvard.edu/scw2014/subpop_tutorial.html}; Section "Identifying highly variable genes").
 
 %\subsubsection{Random substitution with replicates of order k (for advanced users)} 
 %
@@ -1105,16 +1116,19 @@ To test association with Gene Ontology terms. The following MSigDB collections c
 
 \section{References}
 
+Amir,E.D. et al. (2013) viSNE enables visualization of high dimensional single-cell data and reveals phenotypic heterogeneity of leukemia. Nat. Biotechnol., 31, 545?552.
+
 Anders S, Huber W (2010) Differential expression analysis for sequence count data. Genome Biology 11: R106.
 
-Bengtsson M, Stahlberg A, Rorsman P, Kubista M (2005) Gene expression profiling in single cells from the pancreatic islets of Langerhans reveals lognormal distribution of mRNA levels. Genome Res 15: 1388-1392.
+Bengtsson,M. et al. (2005) Gene expression profiling in single cells from the pancreatic islets of Langerhans re-veals lognormal distribution of mRNA levels. Genome Res., 15, 1388?1392.Brennecke,P. et al. (2013) Accounting for technical noise in single-cell RNA-seq experiments. Nat. Methods, 10, 1093?1095.
+Buettner,F. et al. (2015) Computational analysis of cell-to-cell heterogeneity in single-cell RNA-sequencing data reveals hidden subpopulations of cells. Nat. Biotechnol., 33, 155?160.
 
-Brennecke P, Anders S, Kim JK, Kolodziejczyk AA, Zhang X, et al. (2013) Accounting for technical noise in single-cell RNA-seq experiments. Nat Meth 10: 1093-1095.
+Deng,Q. et al. (2014) Single-Cell RNA-Seq Reveals Dynamic, Random Monoallelic Gene Ex-pression in Mammalian Cells. Science, 343, 193?196.Ding,B. et al. (2015) Normalization and noise reduction for single cell RNA-seq experiments. Bioinformatics, btv122.Grün,D. et al. (2014) Validation of noise models for single-cell transcriptomics. Nat. Methods, 11, 637?640.Islam,S. et al. (2014) Quantitative single-cell RNA-seq with unique molecular identifiers. Nat. Methods, 11, 163?166.McDavid,A. et al. (2014) Modeling Bi-modality Improves Characterization of Cell Cycle on Gene Expression in Single Cells. PLoS Comput Biol, 10, e1003696.
 
 Raj, A., Peskin, C. S., Tranchina, D., Vargas, D. Y., Tyagi, S. (2006) Stochastic mRNA Synthesis in Mammalian Cells. PLoS Biol 4, e309.
 
-Trapnell C, Cacchiarelli D, Grimsby J, Pokharel P, Li S, et al. (2014) The dynamics and regulators of cell fate decisions are revealed by pseudotemporal ordering of single cells. Nat Biotech 32: 381-386.
-
+Rand,U. et al. (2012) Multi-layered stochasticity and paracrine signal propagation shape the type-I interferon response. Mol. Syst. Biol., 8.Robinson,M.D. et al. (2010) edgeR: a Bioconductor package for differential expression analysis of digital gene expression data. Bioinformatics, 26, 139?140.Salipante,S.J. and Hall,B.G. (2011) Inadequacies of Minimum Spanning Trees in Molecular Epidemiology. J. Clin. Microbiol., 49, 3568?3575.Shalek,A.K. et al. (2013) Single-cell transcriptomics reveals bimodality in expression and splic-ing in immune cells. Nature.Trapnell,C. et al. (2014) The dynamics and regulators of cell fate decisions are revealed by pseudotemporal or-dering of single cells. Nat. Biotechnol., 32, 381?386.
+Zeisel,A. et al. (2015) Cell types in the mouse cortex and hippocampus revealed by single-cell RNA-seq. Science, 347, 1138?1142.
 \section{Session Info}
 
 <<session_info, eval=TRUE>>=

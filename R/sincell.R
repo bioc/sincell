@@ -18,6 +18,7 @@
 # library(fastICA)
 # library(cluster)
 # library(biomaRt)
+# library(statmod)
 
 # Loading required packages: spam, grid, maps
 #===================================================
@@ -113,7 +114,7 @@ sc_distanceObj <- function(SincellObject, method="euclidean", bins=c(-Inf,0,1,2,
 
 #===================================================
 ## DImensional reduction
-sc_DimensionalityReductionObj <- function(SincellObject, method="PCA", dim=2, MDS.distance="spearman", bins=c(-Inf,0,1,2,Inf),tsne.perplexity=1){
+sc_DimensionalityReductionObj <- function(SincellObject, method="PCA", dim=2, MDS.distance="spearman", bins=c(-Inf,0,1,2,Inf),tsne.perplexity=1,tsne.theta=0.25){
   if(is.list(SincellObject)==FALSE){
     errormesseage<-paste(deparse(substitute(SincellObject)),"is not a list")
     stop(errormesseage)
@@ -145,7 +146,6 @@ sc_DimensionalityReductionObj <- function(SincellObject, method="PCA", dim=2, MD
       newData <- isoMDS((stats::as.dist(SincellObject[["cell2celldist"]])), k=dim)$points
     }
     if(method=="tSNE"){
-      tsne.theta=0.25
       newData <- Rtsne(t(BaseData),dims=dim, initial_dims=ncol(BaseData), perplexity=tsne.perplexity, theta=tsne.theta, check_duplicates=FALSE)$Y
       newData <- newData[,1:dim]
     }
@@ -481,7 +481,7 @@ f_distance2vector <- function(distance){
 }
 #===================================================
 ## Generation of In Silico Cells Replicates
-sc_InSilicoCellsReplicatesObj <- function(SincellObject, method="variance.deciles", multiplier=100, no_expr=0.5, cores=ifelse(detectCores()>=4, 4, detectCores())){
+sc_InSilicoCellsReplicatesObj <- function(SincellObject, method="variance.deciles",dispersion.statistic = NULL, multiplier=100, no_expr=0.5, LogTransformedData = T, baseLogTransformation=exp(1),pseudocounts.added.before.log.transformation=1, cores=ifelse(detectCores()>=4, 4, detectCores())){
   positive=TRUE
   if(is.list(SincellObject)==FALSE){
     errormesseage<-paste(deparse(substitute(SincellObject))," is not a list")
@@ -489,10 +489,17 @@ sc_InSilicoCellsReplicatesObj <- function(SincellObject, method="variance.decile
   }else if(is.null(SincellObject[["expressionmatrix"]])==TRUE){
     errormesseage<-paste(deparse(substitute(SincellObject)),"does not contain a valid expressionmatrix member. Please initialize using function sc_InitializingSincellObject()")
     stop(errormesseage)
-  }else if(method!="variance.deciles" && method!="cv2.deciles" && method!="lognormal-3parameters"){
+  }else if(method!="variance.deciles" && method!="cv2.deciles" && method!="lognormal-3parameters" && method!="negative.binomial"){
     errormesseage<-paste(deparse(substitute(method)),"is not a valid option for parameter method . Please read documentation of sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates() in Sincell manual")
     stop(errormesseage)
-  }else{ 
+  }else if(!is.null(dispersion.statistic) && dispersion.statistic!="cv2.fitted.to.data" && !is.numeric(dispersion.statistic)){
+    errormesseage<-paste(deparse(substitute(dispersion.statistic)),"is not a valid option for parameter dispersion.statistic . Please read documentation of sc_InSilicoCellsReplicatesObj() in Sincell manual")
+    stop(errormesseage)
+  }else if(method=="lognormal-3parameters" && LogTransformedData==F){
+    errormesseage<-paste(deparse(substitute(method)),"is designed for Log-transformed expression data, however parameter LogTransformedData was set to FALSE. Please read documentation of sc_InSilicoCellsReplicatesObj() in Sincell manual")
+    stop(errormesseage)
+  }else{
+    undo.unlog <- F
     if(!(.Platform$OS.type=="unix")){cores=1;}
     if(is.null(SincellObject[["InSilicoCellsReplicates"]])==FALSE){
       SincellObject[["InSilicoCellsReplicates"]]<-NULL
@@ -502,6 +509,7 @@ sc_InSilicoCellsReplicatesObj <- function(SincellObject, method="variance.decile
     BaseData<-SincellObject[["expressionmatrix"]]
     nr <- nrow(BaseData)
     nc <- ncol(BaseData)
+    
     if(method=="variance.deciles" | method=="cv2.deciles"){
       var_genes <- apply(BaseData,1,var)
       mean_genes <- apply(BaseData,1,mean)
@@ -549,20 +557,65 @@ sc_InSilicoCellsReplicatesObj <- function(SincellObject, method="variance.decile
         return(newData)
       }
     }
+    if(method=="negative.binomial"){
+      if(LogTransformedData==T){
+        BaseData <- baseLogTransformation**BaseData-pseudocounts.added.before.log.transformation
+        undo.unlog <- T
+      }
+      var_genes <- apply(BaseData,1,var)
+      mean_genes <- apply(BaseData,1,mean)
+      cv2_genes <- var_genes/mean_genes/mean_genes
+      
+      if(is.null(dispersion.statistic)){
+        r <- mean_genes*mean_genes/(var_genes-mean_genes)
+      }else if(dispersion.statistic=="cv2.fitted.to.data"){
+        minMeanForFit <- unname( quantile( mean_genes[ which( cv2_genes > .3 ) ], .95 ) )
+        useForFit <- mean_genes >= minMeanForFit
+        fit <- glmgam.fit( cbind( a0 = 1, a1tilde = 1/mean_genes[useForFit] ),cv2_genes[useForFit] )
+        a0 <- unname( fit$coefficients["a0"] )
+        a1 <- unname( fit$coefficients["a1tilde"])
+        cv2.estimated <- a1/mean_genes + a0
+        var.genes <- cv2.estimated*mean_genes*mean_genes
+        r <- mean_genes*mean_genes/(var.genes-mean_genes)
+      }else if(is.numeric(dispersion.statistic)){
+        var.genes <- cv2.estimated*mean_genes*mean_genes
+        r <- mean_genes*mean_genes/(var.genes-mean_genes)
+      }
+      
+      if(as.numeric(summary(r<=0)[3])>0){
+        messeage<-paste("WARNING: A total of ",as.numeric(summary(r<0)[3]),"genes have dispersion value r<=0 and will not be perturbed with a random value drawn from the negative binomial distribution\n")
+        cat(messeage)
+      }
+      f_mclapply <- function(x){
+        newData <- matrix(0,nrow=nr,ncol=nc)
+        for(i in 1:nr){
+          if(r[i]>0){
+            newData[i,] <- rnbinom(nc,mu=mean_genes[i],size=r[i])
+          }else{
+            newData[i,] <- BaseData[i,]
+          }
+        }
+        return(newData)
+      }
+    }
     replicates <- mclapply(1:multiplier, f_mclapply, mc.cores=cores, mc.preschedule = TRUE)
     #if(sum(unlist(lapply(replicates, is.null)))>0){
-      #while(sum(unlist(lapply(tree.list, is.null)))){
-      while(!all(unlist(lapply(replicates, is.matrix))) || !all(unlist(lapply(replicates, is.numeric))) || any(unlist(lapply(replicates, is.na))) || any(unlist(lapply(replicates, is.null))) || length(replicates)!=multiplier || !all(unlist(lapply(replicates, ncol))==ncol(SincellObject[["expressionmatrix"]])) || !all(unlist(lapply(replicates, nrow))==nrow(SincellObject[["expressionmatrix"]])) ){
-        # print("WARNING: memory error. Re-executing.")
-        replicates <- mclapply(1:multiplier, f_mclapply, mc.cores=cores, mc.preschedule = TRUE)
-      }
+    #while(sum(unlist(lapply(tree.list, is.null)))){
+    while(!all(unlist(lapply(replicates, is.matrix))) || !all(unlist(lapply(replicates, is.numeric))) || any(unlist(lapply(replicates, is.na))) || any(unlist(lapply(replicates, is.null))) || length(replicates)!=multiplier || !all(unlist(lapply(replicates, ncol))==ncol(SincellObject[["expressionmatrix"]])) || !all(unlist(lapply(replicates, nrow))==nrow(SincellObject[["expressionmatrix"]])) ){
+      # print("WARNING: memory error. Re-executing.")
+      replicates <- mclapply(1:multiplier, f_mclapply, mc.cores=cores, mc.preschedule = TRUE)
+    }
     #}
-    SincellObject[["InSilicoCellsReplicates"]]<-cbind(BaseData, matrix(unlist(replicates),nrow=nr))
+    if(undo.unlog==F){
+      SincellObject[["InSilicoCellsReplicates"]]<-cbind(BaseData, matrix(unlist(replicates),nrow=nr))
+    }else{
+      SincellObject[["InSilicoCellsReplicates"]]<-cbind(SincellObject[["expressionmatrix"]],log(matrix(unlist(replicates),nrow=nr)+pseudocounts.added.before.log.transformation),base=baseLogTransformation)
+    }
     TotalNumNA<-(sum(unlist(lapply(replicates, is.na))))
-	  if(TotalNumNA>0){
-		  messeage<-paste("WARNING: Total NAs in Replicates",TotalNumNA,"\n")
-		  cat(messeage)
-	  }
+    if(TotalNumNA>0){
+      messeage<-paste("WARNING: Total NAs in Replicates",TotalNumNA,"\n")
+      cat(messeage)
+    }
     SincellObject[["multiplier"]]<-multiplier
     SincellObject[["methodInSilicoCellsReplicates"]]<-method
     return(SincellObject)

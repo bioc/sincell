@@ -1,3 +1,8 @@
+CHANGES IN sincell 1.1.01:
+
+  * paramether tsne.theta has been added to function sc_DimensionalityReductionObj
+  * function sc_InSilicoCellsReplicatesObj  has been expanded to incorporate a forth model of noise generation following the negative binomial (NB) distribution. For each gene, dispersion parameters for the NB can be estimated in three alternative ways allowing different types of estimates (e.g. technical noise provided by the user). See documentation of sc_InSilicoCellsReplicatesObj() function.
+
 CHANGES IN sincell 0.99.0:
 
   INITIAL RELEASE
