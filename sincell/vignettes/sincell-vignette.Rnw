@@ -1,0 +1,1132 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{Sincell: Analysis of cell state hierarchies from single-cell RNA-seq}
+%\VignettePackage{sincell}
+
+
+% To compile this document
+% library('knitr'); rm(list=ls()); knit('sincell/vignettes/sincell-vignette.Rnw')
+
+\documentclass[12pt]{article}
+
+\newcommand{\Sincell}{\textit{Sincell}}
+\newcommand{\lowtilde}{\raise.17ex\hbox{$\scriptstyle\mathtt{\sim}$}}
+
+<<knitr, echo=FALSE, results="hide">>=
+library("knitr")
+opts_chunk$set(tidy=FALSE,tidy.opts=list(width.cutoff=30),dev="png",fig.show="hide",
+               fig.width=4,fig.height=4.5,
+               message=FALSE)
+@ 
+
+<<style, eval=TRUE, echo=FALSE, results="asis">>=
+BiocStyle::latex()
+@
+
+
+\author{Miguel Juli\'{a} $^{1,2}$, Amalio Telenti$^{3}$, Antonio Rausell$^{1,2*}$ \\[1em] \small{$^{1}$ Vital-IT group, SIB Swiss Institute of Bioinformatics, 1015 Lausanne, Switzerland} \\ \small{$^{2}$ University of Lausanne, 1015 Lausanne, Switzerland } \\ \small{$^{3}$ J. Craig Venter Institute, La Jolla, CA 92037 } \\ \mbox{ }\\ \small{\texttt{$^*$Correspondence to antonio.rausell (at) isb-sib.ch}}}
+
+\title{Sincell: R package for statistical assessment of cell state hierarchies from single-cell RNA-seq}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+ Cell differentiation processes are achieved through a continuum of hierarchical intermediate cell-states that might be captured by single-cell RNA seq. Existing computational approaches for the assessment of cell-state hierarchies from single-cell data might be formalized under a general framework composed of i) a metric to assess cell-to-cell similarities (combined or not with a dimensionality reduction step), and ii) a graph-building algorithm (optionally making use of a cells-clustering step). \Sincell{} R package implements a methodological toolbox allowing flexible workflows under such framework. Furthermore, \Sincell{} contributes new algorithms to provide cell-state hierarchies with statistical support while accounting for stochastic factors in single-cell RNA seq. Graphical representations and functional association tests are provided to interpret hierarchies. Some functionalities are illustrated in a real case study where their ability to discriminate noisy from stable cell-state hierarchies is demonstrated.
+  \vspace{1em}
+  
+\textbf{\Sincell{} version:} \Sexpr{packageDescription("sincell")$Version} \footnote{This document used vignette from \Bioconductor{} package \Biocpkg{DESeq2} as knitr template}
+
+  \vspace{1em}
+  
+  \begin{center}
+    \begin{tabular}{ | l | }
+      \hline 
+      If you use \Sincell{} in published research, please cite:  \\
+      \\
+      Juli\'{a} M, Telenti A, Rausell A. Sincell - R package for the\\
+      statistical assessment of cell state hierarchies from single-cell\\
+      RNA-seq data. BioRxiv 2014 doi: \\
+      \hline 
+    \end{tabular}
+  \end{center}
+
+  \end{abstract}
+
+<<options, results="hide", echo=FALSE>>=
+options(digits=3, width=80, prompt=" ", continue=" ")
+@
+
+
+\newpage
+
+\tableofcontents
+
+\section{Introduction}
+
+Unbiased transcriptome profiling of individual cells through RNA-seq allows capturing the continuum of cell states transited through a differentiation or activation process. Such continuum can be represented by a sequential ordering of cell-states ultimately leading to heterogeneous cell types within a sample. The assessment of cell-state hierarchies from single RNA-seq is challenging due to the intrinsic stochasticity of gene expression and technical noise. Statistical support is further needed in experimental settings where the number of cells is several orders of magnitude lower than the number of genes profiled.
+
+A number of computational methods have been developed to assess cell-state hierarchies from single-cell data generated with different technologies (see Juli\'{a} et al Bioarxiv 2014, Supplementary Table 1). The different methods can be dissected into prototypical steps: a) the assessment of a cell-to-cell similarity matrix by a given metric (preceded or not with a dimensionality reduction step), and b) a graph-building algorithm that can optionally make use of a cells-clustering step. 
+
+\Sincell{}  integrates the various components of that general workflow in a way that they can be combined in a user-defined manner (see Juli\'{a} et al Bioarxiv 2014, Figure 1). Different alternatives are provided for each step of the analysis and new algorithms are contributed. Notably, \Sincell{}  implements algorithms to assess the statistical support of cell-state hierarchies derived from single-cell RNAseq. Different graphical representations and functional association tests are proposed to help the user interpreting the results. A complete description of the package and algorithms herein can be found in Juli\'{a} et al (Bioarxiv, 2014)
+
+\section{Installing \Sincell{} package}
+
+\Sincell{} depends on following CRAN-R packages: entropy; fastICA; fields; ggplot2; igraph; MASS; proxy; reshape2; Rtsne; scatterplot3d, TSP. 
+
+First, packages missing your current installation together with their dependencies need to be installed:
+
+<<install_missing_packages, eval=FALSE>>=
+packages<-c("entropy", "fastICA", "fields", "ggplot2", "igraph", "MASS", "proxy", 
+                   "reshape2", "Rtsne", "scatterplot3d", "TSP", "abc", "abctools")
+
+packages2install <- packages [!(packages %in% installed.packages()[, "Package"])]
+if(length(packages2install)>0){
+  for (i in 1:length(packages2install)){ 
+    install.packages(packages2install[i], dependencies = TRUE)
+  }  
+}
+@ %def
+
+Then, install sincell package from Bioconductor:
+
+<<install_sincell, eval=FALSE>>=
+source("http://bioconductor.org/biocLite.R") 
+biocLite("sincell")
+@ %def
+
+In this vignette we will further make use of libraries "biomaRt" and "monocle" from Bioconductor:
+
+<<install_missing_bioconductor_packages, eval=FALSE>>=
+packages.bioconductor<-c("biomaRt","monocle")
+packages.bioconductor.2install <- packages [!(packages.bioconductor 
+     %in%  installed.packages()[, "Package"])]
+if(length(packages.bioconductor.2install)>0){
+  for (i in 1:length(packages.bioconductor.2install)){ 
+    biocLite(packages.bioconductor.2install[i])
+  }
+}
+@ %def
+
+We may now load package \Sincell{} 
+<<init_sincell, cache=FALSE, eval=TRUE,warning=FALSE>>=
+library(sincell)
+@ %def
+
+<<set_seed, echo=FALSE, results="hide">>=
+set.seed(42)
+@ %def
+
+\section{Loading an expression matrix into a \Sincell{} object}
+
+\Sincell{}  workflow starts from an expression matrix comprising the expression levels of each single-cell in the experiment (displayed by columns) for each detected gene (displayed by rows). Before starting using \Sincell{}, quality controls to filter out individual cells from the analysis have to be performed by the user. Expression levels need also to be previously normalized to account for library size or technical variability (e.g. through the use of spike-in molecules).
+
+Some \Sincell{} functions are computationally intensive. Implementation of some \Sincell{}'s algorithms in C++ as well as parallelization of \Sincell{}'s functions permit to decrease running times. However, working with a gene expression matrix of several thousands of genes can lead to long computing times depending on the available hardware. If time or computation capacity is an issue, we recommend the user to restrict the analysis to the most variable protein coding genes in the dataset. These genes drive most of the signal to assess cell-state hierarchies and restricting the analyses to them should not bias the final results. Typically, the ensemble of \Sincell{} routines on an expression matrix with 2000 genes and 180 individual cells takes less than one hour in a laptop with 8GB RAM. Nevertheless, selecting the most variable genes is not straightforward due to the mean-variance relationship. To select the most variable genes we refer the user to the two following excellent tutorials:
+
+i) the HSC Harvard Catalyst Single-Cell Workshop 2014: RNA-seq (\url{http://pklab.med.harvard.edu/scw2014/subpop_tutorial.html}; Section "Identifying highly variable genes") 
+
+and ii) Bioconductor RNA-Seq workflow (\url{http://master.bioconductor.org/help/workflows/rnaseqGene/#de}; Section "The rlog transformation"). 
+
+Quoting from this last document by Love M, Anders S and Huber W:
+
+\textit{"Many common statistical methods for exploratory analysis of multidimensional data, especially methods for clustering and ordination (e.g., principal-component analysis and the like), work best for (at least approximately) homoskedastic data; this means that the variance of an observed quantity (here, the expression strength of a gene) does not depend on the mean. In RNA-Seq data, however, variance grows with the mean. For example, if one performs PCA (principal components analysis) directly on a matrix of normalized read counts, the result typically depends only on the few most strongly expressed genes because they show the largest absolute differences between samples"}
+
+To avoid this bias, we recommend the user performing a variance stabilizing transformation. The simplest way is taking the logarithm of the normalized count values plus 10 (or 100) pseudocounts. More sophisticated strategies are provided by the function \textit{rlog} and other variance stabilizing transformations discussed in the Bioconductor{} package \Biocpkg{DESeq2}.
+
+To restrict the analysis to protein coding genes, a list of them can be downloaded from Ensembl BioMart  (\url{http://www.ensembl.org/biomart/}) for different organisms and in different types of gene id's (e.g. Entrez, Ensembl, HGNC). Bioconductor{} package \Biocpkg{biomaRt} provides access to that information from the R environment (see below).
+
+Once quality control, normalization and variance stabilization (e.g. log transformation with 100 pseudocounts) have been performed and the most variable genes identified (e.g. the 2000 most variable protein coding genes), we are ready to start working with \Sincell{}. 
+
+Function \textit{sc\_InitializingSincellObject()} initializes a \Sincell{}  object from the gene expression matrix 
+
+<<initialize_sincellObject_example, eval=FALSE>>=
+# Do not run
+SincellObject<-sc_InitializingSincellObject(ExpressionMatrix)
+@ %def
+
+In this vignette we will illustrate \Sincell{}  usage on a publicly available single-cell RNA-seq dataset taken from Trapnell et al 2014. In this work, authors generated single-cell RNA-seq libraries for differentiating myoblasts at 0, 24, 48 and 72 hours. Original data can be accessed at GEO database accession number GSE52529 (\url{ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE52nnn/GSE52529/suppl/GSE52529_fpkm_matrix.txt.gz}). Following Trapnell et al 2014 and the vignette of its associated \Bioconductor{} package \Biocpkg{monocle} , the expression matrix is restricted to genes differentially expressed between cells from times 0 and the ensemble of cells of times 24, 28 and 72 hours of differentiation. Steps to achieve this are reported below quoting \Biocpkg{monocle}'s  vignette, though we recommend not to run them here due to the long computing time needed to complete them.
+
+<<monocle_expression_matrix_filtering, eval = TRUE>>=
+# Within R console we load monocle package:
+library(monocle)
+@ %def
+
+<<monocle_expression_matrix_filtering_2, eval = FALSE>>=
+# WARNING: do not run
+
+HSMM <- detectGenes(HSMM, min_expr = 0.1)
+expressed_genes <- row.names(subset(fData(HSMM), num_cells_expressed >= 50))
+# The vector expressed_genes now holds the identifiers for genes expressed in 
+# at least 50 cells of the data set. 
+
+# Keeping expressed genes with q-value < 0.01
+diff_test_res <- differentialGeneTest(HSMM[expressed_genes,], 
+                         fullModelFormulaStr = "expression~Media")
+ordering_genes <- row.names(subset(diff_test_res, qval < 0.01))
+HSMM <- HSMM[ordering_genes,]
+@ %def
+
+In order to keep the running time of this vignette short, we provide the expression matrix produced by previous steps: 
+<<load_data, eval=TRUE>>=
+data(ExpressionMatrix)
+@ %def
+
+From the expression matrix we get the log-transformed expression matrix
+<<logtransform_data, eval=TRUE>>=
+EMlog <- unique(
+       log(ExpressionMatrix[which(apply(ExpressionMatrix,1,var)>0),]+1)
+       )
+EMlog <- as.matrix( EMlog[as.logical(apply(!is.nan(EMlog),1,sum)),])
+@ %def
+
+Optionally, we can change gene Ensembl identifiers to HGCN symbols using biomaRt
+<<change_geneIDs, eval=TRUE>>=
+GeneEnsemblID<-rownames(EMlog)
+head(GeneEnsemblID)
+GeneEnsemblID <- sapply( strsplit(GeneEnsemblID, split=".",fixed=TRUE),"[",1)
+head(GeneEnsemblID)
+library("biomaRt")
+ensembl = useMart( "ensembl", dataset = "hsapiens_gene_ensembl" ) 
+genemap <- getBM( attributes = c("ensembl_gene_id", "entrezgene", "hgnc_symbol"), 
+	filters = "ensembl_gene_id", values = GeneEnsemblID, mart = ensembl ) 
+idx <- match(GeneEnsemblID, genemap$ensembl_gene_id ) 
+GeneEntrez <- genemap$entrezgene[ idx ] 
+GeneHGCN <- genemap$hgnc_symbol[ idx ]
+
+rownames(EMlog)[!is.na(GeneHGCN)&(GeneHGCN!="")]<- 
+	GeneHGCN[!is.na(GeneHGCN)&(GeneHGCN!="")]
+head(rownames(EMlog))
+@ %def                     
+                     
+Finally, we can initialize a \Sincell{} object from the gene expression matrix. This done with the function \textit{sc\_InitializingSincellObject()}. At this stage, genes with a variance equal to zero are filtered out from the gene expression matrix.
+
+<<initialize_sincellObject, eval=TRUE>>=
+SO<-sc_InitializingSincellObject(EMlog)
+@ %def
+
+Within a Sincell object, the loaded gene expression matrix can be accessed as a named list member "expressionmatrix"	
+<<accessing_expressionmatrix, eval=TRUE>>=
+expressionmatrix<-SO[["expressionmatrix"]]
+@ %def
+
+
+\section{Assessment of a cell-to-cell distance matrix}
+\subsection{Assessment of a cell-to-cell distance matrix with a metric of choice}
+
+The first requirement to obtain a cell-state hierarchy is to assess a cell-to-cell distance matrix. \Sincell{}'s function \textit{sc\_distanceObj()} provides both linear and non-linear distances: Euclidean distance, Pearson and Spearman correlation, L1 distance, Cosine distance and Mutual Information.
+
+<<cell_to_cell_distance_matrix, eval=FALSE>>=
+## Assessment of a cell-to-cell distance matrix
+# help(sc_distanceObj())
+
+# Euclidean distance
+SO<-sc_distanceObj(SO, method="euclidean")
+cell2celldist_Euclidean<-SO[["cell2celldist"]] 
+
+# Cosine distance
+SO<-sc_distanceObj(SO, method="cosine")
+cell2celldist_Cosine<-SO[["cell2celldist"]] 
+
+# Distance based on 1-Pearson correlation
+SO<-sc_distanceObj(SO, method="pearson")
+cell2celldist_Pearson<-SO[["cell2celldist"]]
+
+# Distance based on 1-Spearman correlation
+SO<- sc_distanceObj(SO, method="spearman")
+cell2celldist_Spearman<-SO[["cell2celldist"]] 
+
+# L1 distance
+SO<- sc_distanceObj(SO, method="L1")
+cell2celldist_L1<-SO[["cell2celldist"]] 
+@ %def
+
+<<Mutual_Information, eval=FALSE>>=
+# Mutual information distance is assessed by making bins of expression levels 
+# as defined by the "bines" parameter. This function internally calls function
+#  mi.empirical from package "entropy" using unit="log2".
+SO<-sc_distanceObj(SO, method="MI", bins=c(-Inf,0,1,2,Inf))
+cell2celldist_MI<-SO[["cell2celldist"]]
+@ %def
+
+
+\subsection{Assessment of a cell-to-cell distance matrix with an intermediate dimensionality reduction step}
+
+The cell-to-cell distance matrix can be assessed on the new dimensions obtained from a dimensionality reduction algorithm. \Sincell{}'s function \textit{sc\_DimensionalityReduction()} provides access to the main types of dimensionality reduction techniques either linear or non-linear, from which cell-to-cell distances can be assessed. The methods provided are: Principal Component Analysis (PCA), Independent Component Analysis (ICA), t-Distributed Stochastic Neighbor Embedding (tSNE), classical Multidimensional Scaling and  non-metric Multidimensional Scaling.
+
+For instance, to perform a PCA with 3 dimensions:
+
+<<PCA, eval=TRUE>>=
+# help(sc_DimensionalityReductionObj)
+
+# Principal Component Analysis (PCA)
+SO <- sc_DimensionalityReductionObj(SO, method="PCA", dim=3)
+cellsLowDimensionalSpace_PCA<-SO[["cellsLowDimensionalSpace"]]
+@ %def
+
+When choosing PCA, the proportion of variance explained by each of the principal axes can be plotted to allow the user judge whether more dimensions should be considered:
+
+<<EigenValues, echo=TRUE, fig.width=4.5, fig.height=4.5>>=
+plot(SO[["EigenValuesPCA"]],las=1, 
+	main="Proportion of variance explained by\neach PCA principal axis", 
+	ylab="Proportion of variance",xlab="Principal axes",
+	pch=16,ylim=c(0,0.25))
+@ %def
+
+\begin{figure}
+\centering
+\includegraphics[width=.45\textwidth]{figure/EigenValues}
+\caption{
+Proportion of variance explained by each principal axis obtained by a Principal Component Analysis (PCA) of the expression matrix.
+}
+\end{figure}
+
+ICA and t-SNE are other two types of dimensionality reduction techniques that can be used:
+
+<<ICA_tSNE, eval=TRUE,message=FALSE,warning=FALSE,results="hide">>=
+# Independent Component Analysis (ICA)
+SO <- sc_DimensionalityReductionObj(SO, method="ICA", dim=3)
+cellsLowDimensionalSpace_ICA<-SO[["cellsLowDimensionalSpace"]]
+# t-Distributed Stochastic Neighbor Embedding (t-SNE)
+SO <- sc_DimensionalityReductionObj(SO, method="tSNE", dim=3)
+cellsLowDimensionalSpace_tSNE<-SO[["cellsLowDimensionalSpace"]]
+@ %def
+
+The reader should be aware that ICA and tSNE are optimization algorithms, therefore different runs can lead to different solutions on the same input. Those stochastic differences are expected to be small though in certain cases two runs could lead to very different results.
+
+To run Multidimensional Scaling:
+
+<<MDS, eval=TRUE,message=FALSE,warning=FALSE,results="hide">>=
+# Classic Multidimensional Scaling (classical-MDS).
+SO <- sc_DimensionalityReductionObj(SO, method="classical-MDS", dim=3)
+cellsLowDimensionalSpace_classicalMDS<-SO[["cellsLowDimensionalSpace"]]
+
+# Non-metric Multidimensional Scaling (nonmetric-MDS).
+SO <- sc_DimensionalityReductionObj(SO, method="nonmetric-MDS", dim=3)
+cellsLowDimensionalSpace_nonmetricMDS<-SO[["cellsLowDimensionalSpace"]]
+@ %def
+
+Once the dimensionality reduction has been performed, the cell-to-cell distance matrix that has been calculated on the new low dimensional space can be accessed as: 
+
+<<cell2cell_dist, eval=TRUE>>=
+# Cell-to-cell distance matrix from coordinates in low dimensional space
+cell2celldist <- SO[["cell2celldist"]]
+@ %def
+
+\subsection{Graphical representation of individual cells in low dimensional space} \label{sec:Graphical_representation}
+
+At this stage, the graphical representation of the individual cells into a low dimensional space can help identifying patterns of relative similarities as well as groups of cell-states:
+
+ To represent the first two dimensions of the low-dimensional space:
+
+<<plot_cellsLowDimensionalSpace_ICA, echo=TRUE, fig.width=4.5, fig.height=4.5>>=
+plot(t(cellsLowDimensionalSpace_ICA),col= "black",
+     xlab="First axis after dimensionality reduction", 
+     ylab="Second axis after dimensionality reduction")
+
+# We can add to the plot the individual cell identifiers 
+# as indicated by the column's name of the matrix
+text(t(cellsLowDimensionalSpace_ICA),colnames(cellsLowDimensionalSpace_ICA), 
+     pos=3,cex=0.4,col="black")
+@ %def
+
+
+If additional information about the individual cells is available, it can be used to further define coloring schemes that would help interpreting the observed variability. For instance, in the data from Trapnell et al 2014, we can use time points of differentiating myoblasts (0, 24, 48 and 72 hours) as the color scheme to interpret the relative position of cells in low dimensional space (Figure \ref{plot_cellsLowDimensionalSpace_ICA_colored}, left)
+
+First, we build a color vector for the single-cell RNA-seq libraries according to their time of differentiation at 0, 24, 48 and 72 hours, as indicated in the column's name of the matrix:
+ 
+ <<color_by_time, eval=TRUE>>=
+ColorT0<-"blue"
+ColorT24<-"green"
+ColorT48<-"orange"
+ColorT72<-"red"
+
+colorSCsByTime<- character(dim(SO[["expressionmatrix"]])[2])
+colorSCsByTime[grep("T0_", colnames(SO[["expressionmatrix"]]))]<- ColorT0
+colorSCsByTime[grep("T24_",colnames(SO[["expressionmatrix"]]))]<- ColorT24
+colorSCsByTime[grep("T48_",colnames(SO[["expressionmatrix"]]))]<- ColorT48
+colorSCsByTime[grep("T72_",colnames(SO[["expressionmatrix"]]))]<- ColorT72
+@ %def
+
+
+<<plot_cellsLowDimensionalSpace_ICA_coloredbytime, echo=TRUE, fig.width=7.5, fig.height=6.5>>=
+mycex<-1.2
+mylwd<-4
+myps<-1.2
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+     las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,6))
+plot(t(cellsLowDimensionalSpace_ICA),col= colorSCsByTime, xlab="First axis", 
+     ylab="Second axis",main="ICA")
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE, 
+     xpd = TRUE) 
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") 
+legend("right",title="Time\npoint", c("0h","24h","48h","72h"), 
+     fill= c(ColorT0,ColorT24,ColorT48,ColorT72), inset=c(0.03,0),  bty="n")
+@ %def
+
+To further interpret the relative position in the low dimensional space, individual cells can be colored according to the intensity of expression of a user-defined marker gene. \Sincell{} implements function \textit{sc\_marker2color()} to help creating color scales (Figure \ref{plot_cellsLowDimensionalSpace_ICA_colored}, right):
+
+
+<<color_by_marker, eval=TRUE>>=
+myMarker<-"CDK1"
+colorSCsByMarker<-sc_marker2color(SO, marker=myMarker, color.minimum="yellow3", 
+	color.maximum="blue", relative.to.marker=TRUE)
+@ %def
+
+<<plot_cellsLowDimensionalSpace_ICA_coloredbymarker, echo=TRUE, fig.width=7.5, fig.height=6.5>>=
+mycex<-1.2
+mylwd<-4
+myps<-1.2
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+	las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,6))
+plot(t(cellsLowDimensionalSpace_ICA[1:2,]),col= colorSCsByMarker, 
+	xlab="First axis", ylab="Second axis",
+	main=paste("ICA - Marker:",myMarker),pch=10)
+@ %def
+
+%par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE, xpd = TRUE) 
+%plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") 
+%legend("right",title="Time\npoint", c("0h","24h","48h","72h"), fill= c(ColorT0,ColorT24,ColorT48,ColorT72), inset=c(0.03,0),  bty="n")
+
+
+\begin{figure}
+\centering
+\includegraphics[width=.45\textwidth]{figure/plot_cellsLowDimensionalSpace_ICA_coloredbytime}
+\includegraphics[width=.45\textwidth]{figure/plot_cellsLowDimensionalSpace_ICA_coloredbymarker}
+\caption{
+Representation of individual cells in the low dimensional space obtained by performing an Independent Component Analysis on the initial expression matrix. Color code on the left represents the time point of the differentiating myoblast library, while on the right it represents the relative expression levels of the marker from minimum (yellow) to maximum (blue). 
+}
+\label{plot_cellsLowDimensionalSpace_ICA_colored}
+\end{figure}
+
+
+We may now produce a panel with the results for different dimensionality reduction algorithms exploring up to 3 dimensions:
+
+
+<<plot_cellsLowDimensional_panel, echo=TRUE, fig.width=6, fig.height=10>>=
+mycex<-1.5
+mylwd<-4
+myps<-1.2
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+	las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,10))
+zones=matrix(c(1:8),ncol=2,byrow=FALSE)
+
+layout(zones)
+myxlab="First axis"
+myylab="Second axis"
+plot(t(cellsLowDimensionalSpace_PCA[1:2,]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="PCA")
+plot(t(cellsLowDimensionalSpace_ICA[1:2,]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="ICA")
+plot(t(cellsLowDimensionalSpace_tSNE[1:2,]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="tSNE")
+plot(t(cellsLowDimensionalSpace_nonmetricMDS[1:2,]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="nonmetricMDS")
+
+myxlab="Third axis"
+myylab="Second axis"
+plot(t(cellsLowDimensionalSpace_PCA[c(3,2),]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="PCA")
+plot(t(cellsLowDimensionalSpace_ICA[c(3,2),]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="ICA")
+plot(t(cellsLowDimensionalSpace_tSNE[c(3,2),]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="tSNE")
+plot(t(cellsLowDimensionalSpace_nonmetricMDS[c(3,2),]),col= colorSCsByTime, 
+	xlab=myxlab, ylab= myylab, main="nonmetricMDS")
+
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), 
+	new = TRUE, xpd = TRUE) 
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") 
+legend("right",title="Time\npoint", c("0h","24h","48h","72h"), 
+	fill= c(ColorT0,ColorT24,ColorT48,ColorT72), inset=c(0.01,0),bty="n")
+@ %def
+
+Figure \ref{figure/plot_cellsLowDimensional_panel} represents individual cells in several low dimensional spaces as calculated by different algorithms: PCA, ICA, tSNE and non-metric MDS. Panels on the left represent axis 1 and 2, and panels on the right axis 3 and 2 of the corresponding algorithm. Color code corresponds to the time of differentiation as indicated in the legend. It can be observed that the non-metric Multidimensional Scaling is able to separate in its 1st and 3rd dimension the samples according to their time of differentiation. This example shows that exploring different algorithms as well as different dimensions can help capturing the internal structure of the data.
+
+\incfig{figure/plot_cellsLowDimensional_panel}{.8\textwidth}{}{
+  Representation of individual cells in low dimensional space (see text).
+}
+
+Further inspection of low dimensional spaces can be done with a 3D visualization as provided by the rgl package:
+
+<<using_rgl_package, eval=FALSE>>=
+library(rgl)
+# Coloring by time point
+plot3d(t(cellsLowDimensionalSpace_nonmetricMDS), 
+	cex=1, size=2, type="s", col= colorSCsByTime)
+plot3d(t(cellsLowDimensionalSpace_ICA), 
+	cex=1, size=2, type="s", col= colorSCsByTime)
+plot3d(t(cellsLowDimensionalSpace_PCA), 
+	cex=1, size=2, type="s", col= colorSCsByTime)
+plot3d(t(cellsLowDimensionalSpace_tSNE), 
+	cex=1, size=2, type="s", col= colorSCsByTime)
+
+# Coloring by marker
+plot3d(t(cellsLowDimensionalSpace_nonmetricMDS), cex=1, size=2, type="s", col= colorSCsByMarker)
+@ %def
+
+
+For the following steps in the vignette we will use an ICA dimensionality reduction in two dimensions:
+<<ICA_2dim, eval=TRUE>>=
+# Independent Component Analysis (ICA)
+SO <- sc_DimensionalityReductionObj(SO, method="ICA", dim=2) 
+@ %def
+
+\section{Assessment of a cell-state hierarchy}
+
+In Sincell, a cell-state hierarchy is obtained by applying a graph-building algorithm on the previously calculated cell-to-cell distance matrix. Graph-building algorithms may be applied on the cells taken individually or in groups of highly similar cells, as determined by an intermediate clustering step.
+
+\subsection{Optional clustering of individual cells}
+
+Identifying groups of cells particularly homogeneous among them by using a clustering step is recommended to avoid misleading representations produced by a graph-building algorithm: i.e. when two cells, despite being very similar, fall far apart in the graph not because they are different but because they are connected through intermediate cells that are even more similar to either two.
+
+ \Sincell{}'s  function \textit{sc\_clusterObj()} calculates a disconnected graph where the connected components are the clusters generated by a clustering method. This function provides access to the different clustering methods reported below:
+
+<<Cluster_assessment, eval=FALSE>>=
+# help(sc_clusterObj)
+
+# Clusters defined as subgraphs generated by a maximum pair-wise distance cut-off:
+# From a totally connected graph where all cells are connected to each other, 
+# the algorithm keeps only pairs of cells connected by a distance lower than 
+# a given threshold
+SO<- sc_clusterObj(SO, clust.method="max.distance", max.distance=0.5)
+cellsClustering_SubgraphDist <-SO[["cellsClustering"]]
+
+# Clusters defined as subgraphs generated by a given rank-percentile of the 
+# shortest pair-wise distances:
+# From a totally connected graph where all cells are connected to each other, 
+# the algorithm  keeps only the top "x" percent of shortest pairwise distances.
+# In the example, only the shortest 10\% of all pairwise distances are retained
+# to define subgraphs.
+SO<- sc_clusterObj(SO, clust.method="percent", shortest.rank.percent=10)
+cellsClustering_SubgraphPercent <-SO[["cellsClustering"]]
+
+# K-Nearest Neighbours (K-NN) clustering. 
+# In the example k is set up to 3
+SO <- sc_clusterObj (SO, clust.method="knn", mutual=FALSE, k=3)
+cellsClustering_KNN <-SO[["cellsClustering"]]
+
+# K-Mutual Nearest Neighbours clustering. 
+# We present here a variant from K-NN clustering in which only k reciprocal
+# nearest neighbours are clustered together.
+SO <- sc_clusterObj (SO, clust.method="knn", mutual=TRUE, k=3)
+cellsClustering_KMNN <-SO[["cellsClustering"]]
+@ %def
+
+For single-cell data we recommend using K-NN. Other methods available in the \textit{sc\_clusterObj()} function are:
+
+<<Cluster_assessment2, eval=FALSE>>=
+# K-medoids, as calculated by function pam() in package "cluster" on 
+# the distance matrix SO[["cell2celldist"]] with a predefined number of groups k
+SO <- sc_clusterObj (SO, clust.method="k-medoids", mutual=TRUE, k=3)
+cellsClustering_kmedoids <-SO[["cellsClustering"]]
+
+# Agglomerative clustering as calculated by function hclust with different
+# methods and "cutting" the tree in a given number of groups k with 
+# function cutree()
+SO <- sc_clusterObj (SO, clust.method="complete", mutual=TRUE, k=3)
+cellsClustering_hclustcomplete <-SO[["cellsClustering"]]
+@ %def
+
+When applying hierarchical agglomerative clustering or k-medoids clustering, we recommend the user no to create clusters of large sizes that, later in the workflow, might risk masking meaningful gradients in the graphs/hierarchies. We refer the reader to common clustering and plotting R functions to further explore the optimal number of clusters to be used as a parameter in the previous hierarchical and k-means clustering: \url{http://www.statmethods.net/advstats/cluster.html}
+
+
+\subsection{Graph-building step} \label{sec:Graph_building}
+ 
+\Sincell{}'s function \textit{sc\_GraphBuilderObj()} provides access to three different algorithms to assess a graph from a cell-to-cell distance matrix: the Minimum Spanning Tree (MST), the Maximum Similarity Spanning Tree (SST) and the Iterative Mutual Clustering Graph (IMC). SST and IMC are two new graph-building algorithms implemented in \Sincell{} for the first time and are described in Juli\'{a} et al (Bioarxiv, 2014).
+
+For example, to assess MST, SST or IMC graphs on the cell-to-cell distance matrix previously assessed for the Sincell Object "SO" we may run:
+
+<<graph_assessment0, eval=TRUE>>=
+# help(sc_GraphBuilderObj)
+
+# Minimum Spanning Tree (MST)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="MST", 
+	graph.using.cells.clustering=FALSE)
+cellstateHierarchy_MST<-SO[["cellstateHierarchy"]]
+@ %def
+
+<<graph_assessment1, eval=FALSE>>=
+# Maximum Similarity Spanning Tree (SST)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="SST", 
+	graph.using.cells.clustering=FALSE)
+cellstateHierarchy_SST<-SO[["cellstateHierarchy"]]
+@ %def
+
+<<graph_assessment2, eval=TRUE>>=
+# Iterative Mutual Clustering Graph (IMC)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="IMC")
+cellstateHierarchy_IMC<-SO[["cellstateHierarchy"]]
+@ %def
+
+Optionally, algorithms in  \textit{sc\_GraphBuilderObj()} can use clusters of cells to i) overlay connections between pairs of cells belonging to the same cluster (in the case of MST): 
+
+<<graph_assessment3, eval=FALSE>>=
+# Minimum Spanning Tree (MST) with previous clustering of cells
+
+# MST with K-Mutual Nearest Neighbours clustering
+SO <- sc_clusterObj (SO, clust.method="knn", mutual=TRUE, k=5)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="MST", 
+	graph.using.cells.clustering=TRUE)
+cellstateHierarchy_MST_clustKNN<-SO[["cellstateHierarchy"]]
+
+# MST with K-medoids
+SO <- sc_clusterObj (SO, clust.method="k-medoids", k=15)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="MST", 
+	graph.using.cells.clustering=TRUE)
+cellstateHierarchy_MST_clustKmedoids<-SO[["cellstateHierarchy"]]
+@ %def
+
+or ii) treat those clusters as atomic elements in the graph-building process together with non-clustered cells (in the case of SST): 
+
+<<graph_assessment4, eval=TRUE>>=
+# SST with previous clustering of cells
+
+# SST with K-Mutual Nearest Neighbours clustering
+SO <- sc_clusterObj (SO, clust.method="knn", mutual=TRUE, k=5)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="SST", 
+	graph.using.cells.clustering=TRUE)
+cellstateHierarchy_SST_clustKNN<-SO[["cellstateHierarchy"]]
+
+# SST with K-medoids
+SO <- sc_clusterObj (SO, , clust.method="k-medoids", k=15)
+SO<- sc_GraphBuilderObj(SO, graph.algorithm="SST", 
+	graph.using.cells.clustering=TRUE)
+cellstateHierarchy_SST_clustKmedoids<-SO[["cellstateHierarchy"]]
+@ %def
+
+By definition, IMC builds a connected graph through iterations on the clustering results produced by the K-Mutual Nearest Neighbour (K-MNN) algorithm, so there is no need to indicate a value for parameter "graph.using.cells.clustering".
+
+\subsection{Graphical representation of cell-state hierarchies}\label{sec:Graphical_representation_2}
+
+In this section, we illustrate how to obtain graphical representations of the graphs generated with \Sincell{}'s function \textit{sc\_GraphBuilderObj()}. These hierarchies are "igraph" graph objects (see "igraph" R package documentation at \url{http://igraph.org/r/}) representing a totally connected graph. A number of visual displays can help interpreting the cell-state hierarchy. Figure \ref{figure/plot_hierarchies_panel}  is generated with the following code:
+
+<<plot_hierarchies_panel, echo=TRUE, fig.width=10, fig.height=10>>=
+
+# Plotting parameters
+vertex.size=5; 
+edge.color="black"; 
+edge.width=2; 
+vertex.label.cex=0.2; 
+vertex.label.dist=1
+vertex.color=colorSCsByTime
+vertex.label="";
+layout.graph=layout.kamada.kawai;
+
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+	las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,10))
+zones=matrix(c(1:4),ncol=2,byrow=FALSE)
+graphics::layout(zones)
+
+plot.igraph(cellstateHierarchy_MST ,main="MST",
+	vertex.color=vertex.color,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+
+plot.igraph(cellstateHierarchy_SST_clustKNN ,main="SST - KNN cluster",
+	vertex.color=vertex.color,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+
+plot.igraph(cellstateHierarchy_SST_clustKmedoids ,main="SST - K-medoids",
+	vertex.color=vertex.color,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+
+plot.igraph(cellstateHierarchy_IMC ,main="IMC",
+	vertex.color=vertex.color,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+@ %def
+
+\incfig{figure/plot_hierarchies_panel}{.8\textwidth}{}{
+  Representation of cell-state hierarchies assessed with different methods (see text).
+}
+
+Figure \ref{figure/plot_hierarchies_panel} represents four of the cell-state hierarchies calculated in Section~\ref{sec:Graph_building}. The color code corresponds to the time of differentiation of myoblast samples, as indicated in the legend. It can be observed that cells from time point 0h are highly homogeneous, clustering together in the hierarchy. However, 
+Cells from time points 24, 48 and 72 hours are intertwined in the hierarchy. Indeed, some cells from different time points are more similar among them than among other cells from the same timepoint, suggesting a heterogeneity of cell-states (i.e. pseudotimes) within sample.
+
+As previously described for the graphical representation of individual cells in low dimensional space (see Section~\ref{sec:Graphical_representation}), different color schemes can be used:
+
+i) a continuous color scale reflecting the expression levels of a maker of choice: 
+<<plot_parameters_1, eval=FALSE>>=
+# To color by marker, set following parameter to:
+ vertex.color=colorSCsByMarker
+@ %def
+
+and ii) a color code representing qualitative information about the samples (e.g. time points of differentiating myoblasts in Trapnell et al 2014: 0, 24, 48 and 72 hours)
+<<plot_parameters_2, eval=FALSE>>=
+# To color by time point:
+vertex.color=colorSCsByTime
+@ %def
+
+To represent individual cell identifiers in the graphs, set: 
+<<plot_parameters_3, eval=FALSE>>=
+vertex.label=colnames(SO[["expressionmatrix"]]);
+@ %def
+
+Different layout options can also be explored to better represent the graph:
+
+a) Using the layout of cells provided by the low dimensional spaced used (if any) to assess the cell-to-cell distance matrix. For example:
+<<plot_parameters_4, eval=FALSE>>=
+layout=t(cellsLowDimensionalSpace_ICA[1:2,])
+@ %def
+
+b) or using other igraph layouts, for instance:
+<<plot_parameters_5, eval=FALSE>>=
+layout=layout.fruchterman.reingold
+layout=layout.reingold.tilford
+layout=layout.graphopt
+layout=layout.svd
+layout=layout.lgl
+@ %def
+
+
+\subsection{Comparisson of hierarchies assessed by different algorithms on the same data}
+
+\Sincell{}'s function \textit{sc\_ComparissonOfGraphs()} provides a way to compare the graphs resulting from the different algorithms. The distance between two graphs is assessed as 1 minus their similarity, which is calculated as the Spearman rank correlation between the two graphs of the shortest distance for all pairs of cells. The function prints the distance matrix comparing the graphs and plots a hierarchical clustering of the hierarchies:
+
+<<Comparisson_graphs, eval=TRUE>>=
+
+sc_ComparissonOfGraphs(
+  cellstateHierarchy_MST,
+  cellstateHierarchy_SST_clustKNN,
+  cellstateHierarchy_SST_clustKmedoids,
+  # graph.names=c("MST","SST-KNNcluster","SST-K-medoids"),
+  cellstateHierarchy_IMC,
+  graph.names=c("MST","SST-KNNcluster","SST-K-medoids","IMC")
+)
+@ %def
+
+
+\section{Algorithmic strategies to provide statistical support to cell-state hierarchies from single-cell RNAseq}\label{sec:statistical_support}
+
+The fact that a cell-state hierarchy is obtained by using previous algorithms does not necessarily imply that it reflects a true biological scenario of cell activation/differentiation. It might well be that the hierarchy obtained is mainly driven by noise due to either biological or technical factors. Furthermore, the relative contribution of stochastic factors to the observed differences across cells is expected to be higher if cells within a sample are in a homogeneous steady-state. In that case, a low cell-to-cell heterogeneity will lead to cell-state hierarchies very sensitive to small variations in the initial gene expression data. On the other extreme, high levels of cell-to-cell heterogeneity driven by a real granularity in an activation/differentiation process will translate into robust hierarchies that can be reproduced despite stochastic perturbations of the data. 
+
+To help discriminating reliable cell-state hierarchies from noisy rearrangements, \Sincell{} implements two algorithms: i) a strategy relying on a gene resampling procedure and ii) an algorithm based on random cell substitution with in silico-generated cell replicates. 
+
+As in previous sections, we illustrate the use of these algorithms on the four single-cell RNA-seq libraries for differentiating myoblasts at 0, 24, 48 and 72 hours generated by Trapnell et al 2014. However, this time we will analyse the 4 libraries independently and ask whether a cell-state hierarchy obtained from each of them separately is actually statistically supported. This mimics a scenario where a potential user analyses a single-cell library from one experiment (e.g. condition) and tries to figure out whether the biological sample contains heterogeneity of cell-states that might be represented in the form of a hierarchy with statistical support.
+
+Let's obtain first the cell-state hierarchy for each time using the first two dimensions of a dimensionality reduction with Independent Component Analysis (ICA) and a Minimum Spanning Tree (MST)
+
+<<graphs_separately, eval=TRUE>>=
+t0 <- grep("T0_", colnames(EMlog))
+t24 <- grep("T24_", colnames(EMlog))
+t48 <- grep("T48_", colnames(EMlog))
+t72 <- grep("T72_", colnames(EMlog))
+
+EMlog_t0<-EMlog[,t0]
+EMlog_t24<-EMlog[,t24]
+EMlog_t48<-EMlog[,t48]
+EMlog_t72<-EMlog[,t72]
+
+dim(EMlog_t0)
+dim(EMlog_t24)
+dim(EMlog_t48)
+dim(EMlog_t72)
+
+SO_t0 <- sc_InitializingSincellObject(EMlog_t0)
+SO_t0 <- sc_DimensionalityReductionObj(SO_t0, method="ICA",dim=2)
+SO_t0 <- sc_GraphBuilderObj(SO_t0, graph.algorithm="MST", 
+	graph.using.cells.clustering=FALSE)
+
+SO_t24 <- sc_InitializingSincellObject(EMlog_t24)
+SO_t24 <- sc_DimensionalityReductionObj(SO_t24, method="ICA",dim=2)
+SO_t24 <- sc_GraphBuilderObj(SO_t24, graph.algorithm="MST", 
+	graph.using.cells.clustering=FALSE)
+
+SO_t48 <- sc_InitializingSincellObject(EMlog_t48)
+SO_t48 <- sc_DimensionalityReductionObj(SO_t48, method="ICA",dim=2)
+SO_t48 <- sc_GraphBuilderObj(SO_t48, graph.algorithm="MST", 
+	graph.using.cells.clustering=FALSE)
+
+SO_t72 <- sc_InitializingSincellObject(EMlog_t72)
+SO_t72 <- sc_DimensionalityReductionObj(SO_t72, method="ICA",dim=2)
+SO_t72 <- sc_GraphBuilderObj(SO_t72, graph.algorithm="MST", 
+	graph.using.cells.clustering=FALSE)
+@ %def
+
+Figure \ref{figure/plot_hierarchies_timepoints_panel} represents the cell-state hierarchies calculated separately for each myoblast differentiation time:
+
+<<plot_hierarchies_timepoints_panel, echo=TRUE, fig.width=10, fig.height=10>>=
+
+# Plotting parameters
+vertex.size=5; 
+edge.color="black"; 
+edge.width=2; 
+vertex.label.cex=0.2; 
+vertex.label.dist=1
+vertex.color=colorSCsByTime
+vertex.label="";
+layout.graph=layout.kamada.kawai;
+
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+	las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,10))
+zones=matrix(c(1:4),ncol=2,byrow=FALSE)
+graphics::layout(zones)
+
+plot.igraph(SO_t0[["cellstateHierarchy"]],main="0 hours",
+	vertex.color=ColorT0,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+
+plot.igraph(SO_t24[["cellstateHierarchy"]],main="24 hours",
+	vertex.color=ColorT24,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+
+plot.igraph(SO_t48[["cellstateHierarchy"]],main="48 hours",
+	vertex.color=ColorT48,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+
+plot.igraph(SO_t72[["cellstateHierarchy"]],main="72 hours",
+	vertex.color=ColorT72,vertex.label=vertex.label,
+	vertex.size=vertex.size,edge.color=edge.color,
+	edge.width=edge.width,vertex.color=vertex.color,
+	vertex.label.cex=vertex.label.cex,layout=layout.graph)
+@ %def
+
+\incfig{figure/plot_hierarchies_timepoints_panel}{.8\textwidth}{}{
+  Cell-state hierarchies of differentiating myoblast samples at 4 time points (0,24,48 and 72h) obtained through a dimensionality reduction with Independent Component Analysis (ICA, 2 dimensions) and a Minimum Spanning Tree (MST)
+}
+
+\subsection{Statistical support of cell-state hierarchies by gene resampling}
+
+One strategy to provide statistical support to a connected graph representing a cell-state hierarchy, is the one implemented in \Sincell{}'s function \textit{sc\_StatisticalSupportByGeneSubsampling()} . This function performs "s" times a random subsampling of a given number "n" of genes on the original gene expression matrix. Then, for each sampling, a new connected graph of cells is generated using the same parameters as for the hierarchy being tested. In each subsampling, the similarity between the resulting connected graph and the original one is assessed as the Spearman rank correlation between the two graphs of the shortest distance for all pairs of cells. The distribution of Spearman rank correlation values of all subsamplings might be interpreted as the distribution of similarities between hierarchies that would be obtained from small changes in the data. A distribution with a high median and small variance would indicate a well-supported cell-state hierarchy. On the contrary, a distribution with a low median of similarities and/or a wide variance would indicate a hierarchy very sensitive to changes in the data, and therefore not highly statistically supported.
+
+To provide statistical support by gene subsampling to the cell-state hierarchies obtained in the differentiating myoblasts libraries at 0, 24, 48 and 72 hours, we may run:
+
+<<gene_resampling, eval=TRUE>>=
+# For the sake of time we set here num_it=100. 
+# For a higher significance, we recommend setting  num_it=1000
+SO_t0<-sc_StatisticalSupportByGeneSubsampling(SO_t0, num_it=100)
+SO_t24<-sc_StatisticalSupportByGeneSubsampling(SO_t24, num_it=100)
+SO_t48<-sc_StatisticalSupportByGeneSubsampling(SO_t48, num_it=100)
+SO_t72<-sc_StatisticalSupportByGeneSubsampling(SO_t72, num_it=100)
+@ %def
+
+The distribution of Spearman rank correlation values of all subsampings is stored as a vector in SincellObject[["StatisticalSupportbyGeneSubsampling"]] and a summary is printed to the standard output. 
+
+We may now plot together the distribution corresponding to the hierarchies from the different time points (Figure \ref{figure/plot_gene_resampling}):
+
+
+<<plot_gene_resampling, echo=TRUE, fig.width=5.75, fig.height=4.75>>=
+mycex<-1
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+	las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,6))
+
+plot(density(SO_t0[["StatisticalSupportbyGeneSubsampling"]]),col=ColorT0,lwd=4,
+	main="Similarities of hierarchies \nupon gene subsamping",xlim=c(0.5,1),
+	ylim=c(0,20),ylab="Density",xlab="Spearman rank correlation")
+lines(density(SO_t24[["StatisticalSupportbyGeneSubsampling"]]),col=ColorT24,lwd=4)
+lines(density(SO_t48[["StatisticalSupportbyGeneSubsampling"]]),col=ColorT48,lwd=4)
+lines(density(SO_t72[["StatisticalSupportbyGeneSubsampling"]]),col=ColorT72,lwd=4)
+
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), 
+	new = TRUE, xpd = TRUE) 
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") 
+legend("right",title="Time\npoint", c("0h","24h","48h","72h"), 
+	fill= c(ColorT0,ColorT24,ColorT48,ColorT72), 
+	inset=c(0.03,0),  bty="n")
+@ %def
+
+\incfig{figure/plot_gene_resampling}{.8\textwidth}{}{
+Similarities of hierarchies upon random gene subsampling. The figure represents the similarities between a given cell-state hierarchy and the hierarchies obtained when random sets of genes are subsampled. Four distributions are plotted corresponding to the hierarchies obtained from the libraries at different time points: 0,24,48 and 72 hours, as indicated in the legend. A high median and a low variance are indicative of a cell-state hierarchy robust to variations in the data. See text for details.
+}
+
+A summary of the distributions of similarities obtained upon subsampling can be printed as follows:
+
+<<gene_resampling2, eval=TRUE>>=
+summary(SO_t0[["StatisticalSupportbyGeneSubsampling"]])
+summary(SO_t24[["StatisticalSupportbyGeneSubsampling"]])
+summary(SO_t48[["StatisticalSupportbyGeneSubsampling"]])
+summary(SO_t72[["StatisticalSupportbyGeneSubsampling"]])
+
+var(SO_t0[["StatisticalSupportbyGeneSubsampling"]])
+var(SO_t24[["StatisticalSupportbyGeneSubsampling"]])
+var(SO_t48[["StatisticalSupportbyGeneSubsampling"]])
+var(SO_t72[["StatisticalSupportbyGeneSubsampling"]])
+@ %def
+
+Late time points (48 and 72h) lead to hierarchies with a high median while early time points (0 and 24h) had a lower median and a higher variance. Results suggest that at the initial stages of differentiation homogeneity of cell states is rather high, leading to a hierarchy sensitive to the set of genes in which it is assessed and therefore less statistically supported. However, late time point showed a hierarchy very robust to gene subsampling, reflecting a marked heterogeneity in cell-states characteristic of more mature differentiation stages.
+
+\subsection{Statistical support of cell-state hierarchies by random cell substitution with in silico-generated cell replicates}
+
+Gene expression levels detected by single-cell RNA seq are subject to stochastic factors both technical and biological. This means that, if it were possible to profile the same cell in the same cell-state multiple times (or, more realistically, a population of individual cells in a highly homogeneous state), the detected expression levels of a gene would randomly fluctuate within a distribution of values. In the ideal scenario where that distribution was known for each gene, individual cell replicates could be produced in silico, leading to variations in gene expression levels similar to what would be obtained from in vivo replicates. The generation of in silico replicates would then permit to test the reproducibility of the cell-state hierarchy upon random replacement of a fraction of the original cells with them.
+
+\subsubsection{Generation of in silico cell replicates}
+
+The stochastic distribution of the expression levels of a gene can be characterized by a measure of dispersion, e.g. the variance or the coefficient of variation. It is known that the expected variation is dependent on the mean expression values of the gene, so that the higher the mean, the higher the variance and the lower the coefficient of variation (Anders and Huber 2010; Brennecke et al 2013). Based on this, we can simulate a stochastic fluctuation of the expression of a gene by perturbing the observed level in a given cell with an error term whose magnitude is consistent with the mean-variance relationship observed in the data. By doing that in all genes from an individual cell Ci, we can produce an in silico replicate of it. 
+
+\Sincell{}'s function \textit{sc\_InSilicoCellsReplicatesObj()} implements this strategy as follows: first, the mean and variance of all genes in the original gene expression matrix is assessed. Genes are assigned to classes according to the deciles of mean they belong to. Next, for a given gene g, a variance v is randomly chosen from the set of variances within the class of the gene. Then, a random value drawn from a uniform distribution U(0,v) of mean zero and variance v is added to the expression value of a gene g in a cell c. By perturbing in this way all genes in a reference cell c we obtain an in silico replicate c'. Redoing the process N times, N stochastic replicates are generated for each original cell. If method= "cv2.deciles" in function \textit{sc\_InSilicoCellsReplicatesObj()}, a coefficient of variation cv2 is randomly chosen from the set of coefficient of variation values within the class of the gene. Then, the parameter v for the uniform distribution is assessed by v=cv2*(mean**2).
+
+To generate 100 in-silico replicates of each individual cell in the differentiating myoblasts libraries at 0, 24, 48 and 72 hours, we may run:
+
+<<insilico_replicates, eval=TRUE>>=
+# For the sake of time we set here multiplier=100. 
+# For a higher significance, we recommend setting multiplier=1000
+SO_t0 <- sc_InSilicoCellsReplicatesObj(SO_t0, 
+	method="variance.deciles", multiplier=100)
+SO_t24 <- sc_InSilicoCellsReplicatesObj(SO_t24, 
+	method="variance.deciles", multiplier=100)
+SO_t48 <- sc_InSilicoCellsReplicatesObj(SO_t48, 
+	method="variance.deciles", multiplier=100)
+SO_t72 <- sc_InSilicoCellsReplicatesObj(SO_t72, 
+	method="variance.deciles", multiplier=100)
+@ %def
+
+The cell replicates are concatenated by columns to the original gene expression matrix and saved in the SincellObject[["InSilicoCellsReplicates"]].
+
+Stochasticity in gene expression at the single-cell level has also been described as following a lognormal distribution log(x) \textasciitilde N(m,v) (Bengtsson et al 2005; Raj et al. 2006). More recently, Shalek et al 2014 described gene expression variability in single-cell RNA-seq through a log normal distribution with a third parameter alpha describing the proportion of cells where transcript expression was detected above a given threshold level. Authors found that the majority of genes in their study (91\%) showed distributions well described by the three-parameter model (p \textless 0.01, goodness of fit test; Shalek et al 2014). By setting parameter method="lognormal-3parameters" within \Sincell{}'s function \textit{sc\_InSilicoCellsReplicatesObj()}, the function uses this "three parameter" model estimation to generate random perturbations of gene expression levels and produce in silico cell replicates.
+
+%<<insilico_replicates2, eval=TRUE>>=
+%# For the sake of time we set here multiplier=100. 
+%# For a higher significance, we recommend setting multiplier=1000
+%SO_t0 <- sc_InSilicoCellsReplicatesObj(SO_t0, 
+%	method="lognormal-3parameters", multiplier=100)
+%SO_t24 <- sc_InSilicoCellsReplicatesObj(SO_t24, 
+%	method="lognormal-3parameters", multiplier=100)
+%SO_t48 <- sc_InSilicoCellsReplicatesObj(SO_t48, 
+%	method="lognormal-3parameters", multiplier=100)
+%SO_t72 <- sc_InSilicoCellsReplicatesObj(SO_t72, 
+%	method="lognormal-3parameters", multiplier=100)
+%@ %def
+
+
+\subsubsection{Random cell substitution with in silico-generated cell replicates}
+
+Once cell-replicates have been generated, a second strategy to provide statistical support to a connected graph is provided by \Sincell{}'s function \textit{sc\_StatisticalSupportByReplacementWithInSilicoCellsReplicates()}. This function performs "s" times a random replacement of a given number "n" cells on the original gene expression matrix with a randomly selected set of in-silico replicates. Then, for each set of substitutions "s", a new connected graph of cells is calculated using the same parameters as for the hierarchy being tested. In each "s", the similarity between the resulting connected graph and the original one is assessed as the Spearman rank correlation between the two graphs of the shortest distance for all pairs of cells. The distribution of Spearman rank correlation values of all replacements might be interpreted as the distribution of similarities between hierarchies that would be obtained from stochastic perturbations of a proportion of cells. A distribution with a high median and small variance would indicate a well-supported cell-state hierarchy. On the contrary, a distribution with a low median of similarities and/or a wide variance would indicate a hierarchy very sensitive to changes in the data, and therefore not much statistically supported.
+
+To provide statistical support by gene substitution with in silico-generated cell replicates to the cell-state hierarchies obtained in the differentiating myoblasts libraries at 0, 24, 48 and 72 hours, we may run:
+
+<<replacement_replicates, eval=TRUE>>=
+SO_t0<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t0,
+	num_it=100,fraction.cells.to.replace=1)
+SO_t24<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t24,
+	num_it=100,fraction.cells.to.replace=1)
+SO_t48<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t48,
+	num_it=100,fraction.cells.to.replace=1)
+SO_t72<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t72,
+	num_it=100,fraction.cells.to.replace=1)
+@ %def
+The distribution of Spearman rank correlation values of all subsampings is stored as a vector in the SincellObject[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]] and a summary is printed to the standard output.
+
+We may now plot together the distribution corresponding to the hierarchies from the different time points (Figure \ref{figure/plot_insilico_replicates}):
+
+<<plot_insilico_replicates, echo=TRUE, fig.width=5.75, fig.height=4.75>>=
+mycex<-1
+par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,
+	las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,6))
+
+plot(density(SO_t0[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]),
+	col=ColorT0,lwd=4,
+	main="Similarities of hierarchies upon substitution\nwith in silico cell replicates",
+	xlim=c(0.5,1),ylim=c(0,20),ylab="Density",xlab="Spearman rank correlation")
+lines(density(SO_t24[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]),
+	col=ColorT24,lwd=4)
+lines(density(SO_t48[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]),
+	col=ColorT48,lwd=4)
+lines(density(SO_t72[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]),
+	col=ColorT72,lwd=4)
+
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), 
+	new = TRUE, xpd = TRUE) 
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n") 
+legend("right",title="Time\npoint", c("0h","24h","48h","72h"), 
+	fill= c(ColorT0,ColorT24,ColorT48,ColorT72), 
+	inset=c(0.03,0),  bty="n")
+@ %def
+
+\incfig{figure/plot_insilico_replicates}{.8\textwidth}{}{
+Similarities of hierarchies upon random cell substitution with in silico-generated cell replicates. The figure represents the similarities between a given cell-state hierarchy and the hierarchies obtained when a random fraction of individual cells (here 100\%) are substituted by a randomly chosen in silico replicate of them. Four distributions are plotted corresponding to the hierarchies obtained from the libraries at different time points: 0, 24, 48 and 72 hours, as indicated in the legend. A high median and a low variance are indicative of a cell-state hierarchy robust to variations in the data. See text for details.
+}
+
+A summary of the distributions of similarities obtained upon subsampling can be printed as follows:
+<<replacement_replicates2, eval=TRUE>>=
+summary(SO_t0[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+summary(SO_t24[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+summary(SO_t48[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+summary(SO_t72[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+
+var(SO_t0[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+var(SO_t24[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+var(SO_t48[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+var(SO_t72[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]])
+@ %def
+
+Consistent with results from the gene resampling procedure, time point 72 lead to the hierarchy with the highest median while time point 0 had the lowest median and the highest variance. Results again suggest that at 0 hours, homogeneity of cell states is high while at time point 72 hours, a higher degree of heterogeneity is present. Actually, a gradient along time can be observed (from 0 to 24, 48 and 72h) suggesting that heterogeneity in cell-states increased as a function of time.
+
+
+%\subsubsection{Random substitution with replicates of order k (for advanced users)} 
+%
+%To further provide statistical support to a hierarchy, we propose here an additional test. Previously we have shown results from the substitution of a cell with an in silico cell replicate of it. We can think now in substituting a cell with an in silico cell replicate from a neighbor of order k in the graph. If the hierarchy is based on distances between cells larger than expected from stochastic variations, substituting a cell by a replicate from a distant neighbor will have a high impact. On the contrary, if the hierarchy is based in homogeneous cell-states and therefore driven by noise, replacement with distant neighbor replicates will not harm much a hierarchy that already has poor statistically support.
+%
+%The parameter "method" of function \textit{sc\_StatisticalSupportByReplacementWithInSilicoCellsReplicates()} controls for the maximum order of neighborhood k from which in silico cell replicates will be randomly chosen for substitution. When k=0, a cell will be replaced by a replicate from itself (this is the behavior by default shown in previous section). If k=2, a cell will be replaced by a replicate from itself or from any neighbor of order 2 in the graph. If k="all", a cell will be replaced by a replicate from itself or from any other cell in the graph. If a hierarchy is well structured with clearly differentiated branches, by increasing k we expect to shift the distribution of similarities towards lower values of Spearman rank correlations. Next analyses explore the degeneration of those similarities upon increasing values of k in the differentiating myoblasts libraries at 0, 24, 48 and 72 hours:
+
+%<<replacement_replicates_advanced, eval=TRUE>>=
+%t0_own<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t0, method="own"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t0_8<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t0, method=8
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t0_16<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(
+%	SO_t0, method=16)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t0_all<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t0, method="all"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%
+%t24_own<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t24, method="own"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t24_8<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t24, method=8
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t24_16<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(
+%	SO_t24, method=16)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t24_all<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t24, method="all"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%
+%t48_own<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t48, method="own"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t48_8<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t48, method=8
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t48_16<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t48, method=16
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t48_all<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t48, method="all"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%
+%t72_own<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t72, method="own"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t72_8<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t72, method=8
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t72_16<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t72, method=16
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%t72_all<-sc_StatisticalSupportByReplacementWithInSilicoCellsReplicates(SO_t72, method="all"
+%	)[["StatisticalSupportByReplacementWithInSilicoCellReplicates"]]
+%@ %def
+%
+%<<plot_insilico_replicates_neighbours, echo=TRUE, fig.width=6, fig.height=10>>=
+%Colork8="darkcyan"
+%Colork16="blue"
+%ColorkAll="black"
+%
+%mycex<-1
+%par(bty="o",xaxs="i",yaxs="i",cex.axis=mycex-0.2,cex.main=mycex,cex.lab=mycex,las=1,mar=c(5.3,5.3,2.9,1.6),oma=c(1,1,2,6))
+%
+%zones=matrix(c(1:4),ncol=1,byrow=TRUE)
+%graphics::layout(zones)
+%
+%plot(density(t0_own,n=length(t0_own)),col=ColorT0,lwd=6,main="Time point 0h",xlim=c(0,1),ylim=c(0,8),ylab="Density",xlab="Spearman rank correlation")
+%lines(density(t0_8,n=length(t0_8)),col=Colork8,lwd=2)
+%lines(density(t0_16,n=length(t0_16)),col=Colork16,lwd=2)
+%lines(density(t0_all,n=length(t0_all)),col=ColorkAll,lwd=2)
+%legend("left",title="Neighbour\nk order", c("0","8","16","All"), fill= c(ColorT0,Colork8,Colork16,ColorkAll), inset=c(0.03,0.03),  bty="n",cex=mycex-0.2)
+%
+%plot(density(t24_own,n=length(t24_own)),col=ColorT24,lwd=6,main="Time point 24h",xlim=c(0,1),ylim=c(0,8),ylab="Density",xlab="Spearman rank correlation")
+%lines(density(t24_8,n=length(t24_8)),col=Colork8,lwd=2)
+%lines(density(t24_16,n=length(t24_16)),col=Colork16,lwd=2)
+%lines(density(t24_all,n=length(t24_all)),col=ColorkAll,lwd=2)
+%legend("left",title="Neighbour\nk order", c("0","8","16","All"), fill= c(ColorT24,Colork8,Colork16,ColorkAll), inset=c(0.03,0.03),  bty="n",cex=mycex-0.2)
+%
+%plot(density(t48_own,n=length(t48_own)),col=ColorT48,lwd=6,main="Time point 48h",xlim=c(0,1),ylim=c(0,8),ylab="Density",xlab="Spearman rank correlation")
+%lines(density(t48_8,n=length(t48_8)),col=Colork8,lwd=2)
+%lines(density(t48_16,n=length(t48_16)),col=Colork16,lwd=2)
+%lines(density(t48_all,n=length(t48_all)),col=ColorkAll,lwd=2)
+%legend("left",title="Neighbour\nk order", c("0","8","16","All"), fill= c(ColorT48,Colork8,Colork16,ColorkAll), inset=c(0.03,0.03),  bty="n",cex=mycex-0.2)
+%
+%plot(density(t72_own,n=length(t72_own)),col=ColorT72,lwd=6,main="Time point 72h",xlim=c(0,1),ylim=c(0,8),ylab="Density",xlab="Spearman rank correlation")
+%lines(density(t72_8,n=length(t72_8)),col=Colork8,lwd=2)
+%lines(density(t72_16,n=length(t72_16)),col=Colork16,lwd=2)
+%lines(density(t72_all,n=length(t72_all)),col=ColorkAll,lwd=2)
+%legend("left",title="Neighbour\nk order", c("0","8","16","All"), fill= c(ColorT72,Colork8,Colork16,ColorkAll), inset=c(0.03,0.03),  bty="n",cex=mycex-0.2)
+%@ %def
+%
+%
+%\incfig{figure/plot_insilico_replicates_neighbours}{.8\textwidth}{}{
+%Similarities of hierarchies upon random cell substitution with in silico-generated cell replicates at increasing values of neighborhoods k. Four panels are plotted corresponding to the hierarchies obtained from the libraries at different time points: 0, 24, 48 and 72 hours, as indicated in the legend. Each panel represents the similarities between a given cell-state hierarchy and the hierarchies obtained when random sets of individual cells (15\%) are substituted by a randomly chosen in silico replicate of themselves (k=0) or at increasing values of neighborhood k (8: light blue; 16: dark blue; all: black). At k=0, a high median and a low variance are indicative of a cell-state hierarchy robust to variations in the data. If the hierarchy is well supported at k=0, it is expected that increasing values of k will shift the distribution of similarities towards lower values of Spearman rank correlations. This is actually observed for time point 72h, proving this way to be a well supported hierarchy. However, the shift of the distributions is  less and less observed at earlier time points, where 0h shows virtually no "degeneration" when increasing k.
+%}
+
+
+\section{Functional association tests to help interpreting cell-state hierarchies}  
+
+Once a cell-state hierarchy has been assessed and its statistical support checked, the next step is interpreting the hierarchy in functional terms. In Section~\ref{sec:Graphical_representation} and Section~\ref{sec:Graphical_representation_2} we have shown different graphical representations that can help interpreting the hierarchies in terms of the features of the samples/libraries (e.g. differentiation time)  or the expression levels of markers of interest (Figures \ref{plot_cellsLowDimensionalSpace_ICA_colored}, \ref{figure/plot_cellsLowDimensional_panel}, and \ref{figure/plot_hierarchies_panel}). In this section, we propose an analytical approach to test whether the cell-state hierarchy associates with a given functional gene set, that is: whether the relative similarities among the individual cells in the hierarchy are driven by the expression levels of a subset of genes with a common functional feature.
+
+\Sincell{}'s function \textit{sc\_AssociationOfCellsHierarchyWithAGeneSet()} implements an algorithmic strategy to evaluate that association. First, the function calculates a new cell-state hierarchy where only the expression levels of the genes in a given functional gene set are considered. Second, it calculates the similarity of that hierarchy and the reference hierarchy (the one assessed on the initial gene expression matrix). The similarity between the two hierarchies is computed as the Spearman rank correlation between the two graphs of the shortest distance for all pairs of cells. Third, the function provides an empirical p-value of the observed similarity between the two hierarchies. This empirical p-value is derived from a distribution of similarities resulting from random samplings of gene sets of the same size.
+
+<<help_functional_association, eval=FALSE>>=
+# help(sc_AssociationOfCellsHierarchyWithAGeneSet())
+@ %def
+
+\Sincell{}'s function \textit{sc\_AssociationOfCellsHierarchyWithAGeneSet()} is particularly suited to evaluate gene set collections from the Molecular Signatures Database (MSigDB) of the Broad Institute \url{http://www.broadinstitute.org/gsea/msigdb/collections.jsp}). Here, we illustrate the use of this function for evaluating the association of the previously obtained hierarchy for time point 72 hours (Section~\ref{sec:statistical_support}) with the gene sets derived from the Reactome pathway database available at MSigDB (\url{http://www.broadinstitute.org/gsea/msigdb/download_file.jsp?filePath=/resources/msigdb/4.0/c2.cp.reactome.v4.0.symbols.gmt}).
+
+We first download gene set c2.cp.reactome.v4.0.symbols.gmt from MSigDB
+<<functional_association, eval=TRUE>>=
+# geneset.list <- lapply(strsplit(readLines("c2.cp.reactome.v4.0.symbols.gmt"),"\t"),
+#	as.character)
+# geneset.list  is provided here for illustrative purposes:
+data(geneset.list)
+head(geneset.list[[1]])
+
+# We establish a minimum gene set size overlap with the genes in 
+# the expression matrix
+minimum.geneset.size=30
+myAssociationOfCellsHierarchyWithAGeneSet<-list()
+for (i in 1:length(geneset.list)){
+  if(sum(rownames(SO_t72[["expressionmatrix"]]) 
+  	%in% geneset.list[[i]])>=minimum.geneset.size){
+	
+    SO_t72<-sc_AssociationOfCellsHierarchyWithAGeneSet(SO_t72,geneset.list[[i]],
+    	minimum.geneset.size=minimum.geneset.size,p.value.assessment=TRUE,
+	spearman.rank.threshold=0.5,num_it=1000)
+    myAssociationOfCellsHierarchyWithAGeneSet[[
+    	as.character(i)]]<-list()
+    myAssociationOfCellsHierarchyWithAGeneSet[[
+    	as.character(i)]][["AssociationOfCellsHierarchyWithAGeneSet"]]<-
+		SO[["AssociationOfCellsHierarchyWithAGeneSet"]]
+    myAssociationOfCellsHierarchyWithAGeneSet[[
+    	as.character(i)]][["AssociationOfCellsHierarchyWithAGeneSet.pvalue"]]<-
+	SO[["AssociationOfCellsHierarchyWithAGeneSet.pvalue"]]
+  }
+}
+length(names(myAssociationOfCellsHierarchyWithAGeneSet))
+@ %def
+
+
+The previous code checks the association of the hierarchy SO\_t72 with all Reactome pathways. If the association with a pathway has a Spearman rank correlation higher than 0.5, an empirical p.value is calculated and a summary of the results is printed. If no gene set passes the Spearman correlation threshold, no messages are generated. The content of all tests is stored in the list "myAssociationOfCellsHierarchyWithAGeneSet". In this particular case, only the pathway REACTOME\_IMMUNE\_SYSTEM showed a high correlation, though the empirical p-value was not significant.
+
+To test association with Gene Ontology terms. The following MSigDB collections can be tested:
+- GO Biological process: c5.bp.v4.0.symbols.gmt
+- GO Molecular function: c5.mf.v4.0.symbols.gmt
+- GO Cellular component: c5.cc.v4.0.symbols.gmt
+
+
+\section{References}
+
+Anders S, Huber W (2010) Differential expression analysis for sequence count data. Genome Biology 11: R106.
+
+Bengtsson M, Stahlberg A, Rorsman P, Kubista M (2005) Gene expression profiling in single cells from the pancreatic islets of Langerhans reveals lognormal distribution of mRNA levels. Genome Res 15: 1388-1392.
+
+Brennecke P, Anders S, Kim JK, Kolodziejczyk AA, Zhang X, et al. (2013) Accounting for technical noise in single-cell RNA-seq experiments. Nat Meth 10: 1093-1095.
+
+Raj, A., Peskin, C. S., Tranchina, D., Vargas, D. Y., Tyagi, S. (2006) Stochastic mRNA Synthesis in Mammalian Cells. PLoS Biol 4, e309.
+
+Trapnell C, Cacchiarelli D, Grimsby J, Pokharel P, Li S, et al. (2014) The dynamics and regulators of cell fate decisions are revealed by pseudotemporal ordering of single cells. Nat Biotech 32: 381-386.
+
+\section{Session Info}
+
+<<session_info, eval=TRUE>>=
+sessionInfo()
+@ %def
+
+<<renaming_figures, echo=FALSE, results="hide", eval=TRUE>>=
+library(stringr)
+figs <- list.files("./figure", full.names=TRUE)
+figs.new <- str_replace(figs, "-1", "")
+file.rename(figs, figs.new )
+@ %def
+
+
+\end{document}
