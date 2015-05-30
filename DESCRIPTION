@@ -3,7 +3,7 @@ Type: Package
 Title: R package for the statistical assessment of cell state
         hierarchies from single-cell RNA-seq data
 Version: 1.1.01
-Date: 2014-12-04
+Date: 2015-05-29
 Author: Miguel Julia <migueljuliamolina@gmail.com>, Amalio Telenti <atelenti@jcvi.org>, Antonio Rausell <antonio.rausell@isb-sib.ch>
 Maintainer: Miguel Julia <migueljuliamolina@gmail.com>, Antonio Rausell<antonio.rausell@isb-sib.ch>
 Depends: R (>= 3.0.2), igraph
