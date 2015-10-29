@@ -353,24 +353,24 @@ sc_GraphBuilderObj <- function(SincellObject, graph.algorithm="MST", graph.using
     if(graph.algorithm=="IMC"){
       SincellObject[["clust.method"]]="knn"
       SincellObject[["mutual"]]=TRUE
-      SincellObject[["k"]]=k    
+      SincellObject[["k"]]=k
+      m <- max(cell2celldist)
       g <- knnalgorithm(cell2celldist, mutual=TRUE, k=k)
       SincellObject[["cellsClustering"]]<-g
       graph.using.cells.clustering=TRUE
       g.clusters <- clusters(g)
       while(g.clusters$no > 1){
-        tmp <- get.edgelist(g)
-        for(i in 1:length(tmp[,1])){
-          cell2celldist[tmp[i,1],tmp[i,2]] <- Inf
-          cell2celldist[tmp[i,2],tmp[i,1]] <- Inf
+        for(i in which(g.clusters$csize > 1)){
+          tmp <- which(g.clusters$membership==i)
+          tmp <- t(combn(tmp,2))
+          cell2celldist[tmp] <- m+1
+          cell2celldist[cbind(tmp[,2], tmp[,1])] <- m+1
         }
         gt <- knnalgorithm(cell2celldist, mutual=TRUE, k=k)
         g <- get.adjacency(g,type="both",attr="weight",sparse=FALSE)
         gt <- get.adjacency(gt,type="both",attr="weight",sparse=FALSE)
-        for(i in which(gt > g)){
-          g[i] <- gt[i]
-        }
-        g <- graph.adjacency(g, weighted=TRUE, mode="undirected")
+        gt[gt>m] <- 0
+        g <- graph.adjacency(g+gt, weighted=TRUE, mode="undirected")
         g.clusters <- clusters(g)    
       }
     }
