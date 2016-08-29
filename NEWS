@@ -1,3 +1,7 @@
+CHANGES IN sincell 1.5.3:
+
+  * added extra information and examples about how to work with the clusters
+
 CHANGES IN sincell 1.3.1:
 
   * fixed bug in IMC algorithm that allowed cells in the same cluster connnect between each others instead of keep growing
