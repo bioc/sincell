@@ -2,7 +2,7 @@ Package: sincell
 Type: Package
 Title: R package for the statistical assessment of cell state
         hierarchies from single-cell RNA-seq data
-Version: 1.13.0
+Version: 1.13.1
 Date: 2015-05-28
 Author: Miguel Julia <migueljuliamolina@gmail.com>, Amalio Telenti <atelenti@jcvi.org>, Antonio Rausell <antonio.rausell@isb-sib.ch>
 Maintainer: Miguel Julia <migueljuliamolina@gmail.com>, Antonio Rausell<antonio.rausell@isb-sib.ch>

@@ -77,8 +77,9 @@ A number of computational methods have been developed to assess cell-state hiera
 Installing \Sincell{} package from Bioconductor will also install all its dependencies:
 
 <<install_sincell, eval=FALSE>>=
-source("http://bioconductor.org/biocLite.R") 
-biocLite("sincell")
+if (!requireNamespace("BiocManager", quietly=TRUE))
+    install.packages("BiocManager")
+BiocManager::install("sincell")
 @ %def
 
 In this vignette we will further make use of libraries "biomaRt" and "monocle" from Bioconductor:
@@ -89,7 +90,7 @@ packages.bioconductor.2install <- packages [!(packages.bioconductor
      %in%  installed.packages()[, "Package"])]
 if(length(packages.bioconductor.2install)>0){
   for (i in 1:length(packages.bioconductor.2install)){ 
-    biocLite(packages.bioconductor.2install[i])
+    BiocManager::install(packages.bioconductor.2install[i])
   }
 }
 @ %def
