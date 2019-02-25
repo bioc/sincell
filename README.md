@@ -7,7 +7,7 @@ Cell differentiation processes are achieved through a continuum of hierarchical 
 
 Author: Miguel Julia <migueljuliamolina at gmail.com>, Amalio Telenti <atelenti at jcvi.org>, Antonio Rausell <antonio.rausell at isb-sib.ch>
 
-Maintainer: Miguel Julia <migueljuliamolina at gmail.com>, Antonio Rausell<antonio.rausell at isb-sib.ch>
+Maintainer: Miguel Julia <migueljuliamolina at gmail.com>, Antonio Rausell <antonio.rausell at isb-sib.ch>
 
 Citation (from within R, enter `citation("sincell")`):
 
@@ -39,8 +39,7 @@ browseVignettes("sincell")
 | [PDF](http://bioconductor.org/packages/release/bioc/manuals/sincell/man/sincell.pdf) | - | Reference Manual |
 | [Text](http://bioconductor.org/packages/release/bioc/news/sincell/NEWS) | - | NEWS |
 
-## Details
+## [Download stats](http://bioconductor.org/packages/stats/bioc/sincell/)
 
 
-## Package archives
 
