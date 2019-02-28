@@ -1,5 +1,5 @@
-# sincell
-### R package for the statistical assessment of cell state hierarchies from single-cell RNA-seq data
+# Sincell
+### R/Bioconductor package for the statistical assessment of cell state hierarchies from single-cell RNA-seq data
 
 [Bioconductor version: Release (3.8)](http://bioconductor.org/packages/release/bioc/html/sincell.html)
 
