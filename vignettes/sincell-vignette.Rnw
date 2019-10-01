@@ -174,10 +174,10 @@ GeneEnsemblID <- sapply( strsplit(GeneEnsemblID, split=".",fixed=TRUE),"[",1)
 head(GeneEnsemblID)
 library("biomaRt")
 ensembl = useMart( "ensembl", dataset = "hsapiens_gene_ensembl" ) 
-genemap <- getBM( attributes = c("ensembl_gene_id", "entrezgene", "hgnc_symbol"), 
+genemap <- getBM( attributes = c("ensembl_gene_id", "entrezgene_id", "hgnc_symbol"), 
 	filters = "ensembl_gene_id", values = GeneEnsemblID, mart = ensembl ) 
 idx <- match(GeneEnsemblID, genemap$ensembl_gene_id ) 
-GeneEntrez <- genemap$entrezgene[ idx ] 
+GeneEntrez <- genemap$entrezgene_id[ idx ] 
 GeneHGCN <- genemap$hgnc_symbol[ idx ]
 
 rownames(EMlog)[!is.na(GeneHGCN)&(GeneHGCN!="")]<- 
