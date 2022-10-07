@@ -175,7 +175,7 @@ head(GeneEnsemblID)
 library("biomaRt")
 ensembl = useMart( "ensembl", dataset = "hsapiens_gene_ensembl" ) 
 genemap <- getBM( attributes = c("ensembl_gene_id", "entrezgene_id", "hgnc_symbol"), 
-	filters = "ensembl_gene_id", values = GeneEnsemblID, mart = ensembl ) 
+	filters = "ensembl_gene_id", values = GeneEnsemblID, mart = ensembl, useCache = FALSE ) 
 idx <- match(GeneEnsemblID, genemap$ensembl_gene_id ) 
 GeneEntrez <- genemap$entrezgene_id[ idx ] 
 GeneHGCN <- genemap$hgnc_symbol[ idx ]
