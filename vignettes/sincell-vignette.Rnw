@@ -573,7 +573,7 @@ SO<- sc_GraphBuilderObj(SO, graph.algorithm="SST",
 cellstateHierarchy_SST_clustKNN<-SO[["cellstateHierarchy"]]
 
 # SST with K-medoids
-SO <- sc_clusterObj (SO, , clust.method="k-medoids", k=15)
+SO <- sc_clusterObj (SO, clust.method="k-medoids", k=15)
 SO<- sc_GraphBuilderObj(SO, graph.algorithm="SST", 
 	graph.using.cells.clustering=TRUE)
 cellstateHierarchy_SST_clustKmedoids<-SO[["cellstateHierarchy"]]
