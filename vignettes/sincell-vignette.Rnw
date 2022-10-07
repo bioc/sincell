@@ -559,6 +559,9 @@ SO <- sc_clusterObj (SO, clust.method="k-medoids", k=15)
 SO<- sc_GraphBuilderObj(SO, graph.algorithm="MST", 
 	graph.using.cells.clustering=TRUE)
 cellstateHierarchy_MST_clustKmedoids<-SO[["cellstateHierarchy"]]
+
+# Weights must be positive for Kamada-Kawai layout
+E(cellstateHierarchy_SST_clustKmedoids)$weight = E(cellstateHierarchy_SST_clustKmedoids)$weight + 0.000000001
 @ %def
 
 or ii) treat those clusters as atomic elements in the graph-building process together with non-clustered cells (in the case of SST): 
@@ -577,6 +580,9 @@ SO <- sc_clusterObj (SO, clust.method="k-medoids", k=15)
 SO<- sc_GraphBuilderObj(SO, graph.algorithm="SST", 
 	graph.using.cells.clustering=TRUE)
 cellstateHierarchy_SST_clustKmedoids<-SO[["cellstateHierarchy"]]
+
+# Weights must be positive for Kamada-Kawai layout
+E(cellstateHierarchy_SST_clustKmedoids)$weight = E(cellstateHierarchy_SST_clustKmedoids)$weight + 0.000000001
 @ %def
 
 By definition, IMC builds a connected graph through iterations on the clustering results produced by the K-Mutual Nearest Neighbour (K-MNN) algorithm, so there is no need to indicate a value for parameter "graph.using.cells.clustering".
