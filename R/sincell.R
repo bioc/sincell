@@ -1,5 +1,5 @@
 ## Dependences
-# install.packages(c("igraph", "entropy", "scatterplot3d", "MASS", "TSP", "ggplot2", "reshape2", "fields", "spam", "grid", "maps", "proxy","parallel", "Rtsne", "fastICA"))
+# install.packages(c("igraph", "entropy", "scatterplot3d", "MASS", "TSP", "ggplot2", "reshape2", "fields", "spam", "grid", "maps", "proxy","parallel", "Rtsne", "fastICA", "statmod"))
 ## Optional
 # if (!requireNamespace("BiocManager", quietly=TRUE))
     # install.packages("BiocManager")
